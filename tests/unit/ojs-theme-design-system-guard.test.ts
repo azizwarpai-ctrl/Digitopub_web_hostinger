@@ -1,0 +1,198 @@
+import { describe, it, expect } from "vitest"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
+import path from "node:path"
+
+// SubmitManager (OJS theme) shares DigitoPub's design system. These guards
+// keep the theme on that system and away from the less.php traps documented
+// in ojs-theme/check-less.sh (clamp() silently collapses, calc(var()) and
+// min()/max() fail to compile).
+
+const ROOT = path.resolve(__dirname, "../..")
+const THEME = path.join(ROOT, "ojs-theme/digitopub")
+const STYLES = path.join(THEME, "styles")
+const read = (p: string) => readFileSync(p, "utf8")
+
+function walk(dir: string, ext: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name)
+    if (statSync(full).isDirectory()) return walk(full, ext)
+    return full.endsWith(ext) ? [full] : []
+  })
+}
+
+const lessFiles = () => walk(STYLES, ".less")
+const rel = (p: string) => path.relative(ROOT, p).replace(/\\/g, "/")
+
+// ── Token parity with DigitoPub ──────────────────────────────────────────────
+
+const TOKENS = [
+  "background", "foreground", "card", "card-foreground", "primary", "primary-foreground",
+  "secondary", "secondary-foreground", "muted", "muted-foreground", "accent", "accent-foreground",
+  "destructive", "border", "input", "ring",
+] as const
+
+/** `--name: value;` pairs inside the first block that follows `selectorRe`. */
+function tokensIn(source: string, selectorRe: RegExp): Record<string, string> {
+  const start = source.search(selectorRe)
+  if (start === -1) return {}
+  const open = source.indexOf("{", start)
+  // Take the first innermost block containing custom properties.
+  let depth = 0, i = open, end = open
+  for (; i < source.length; i++) {
+    if (source[i] === "{") depth++
+    else if (source[i] === "}" && --depth === 0) { end = i; break }
+  }
+  const body = source.slice(open + 1, end)
+  const out: Record<string, string> = {}
+  for (const m of body.matchAll(/--([a-z-]+)\s*:\s*([^;]+);/g)) out[m[1]] ??= m[2].trim()
+  return out
+}
+
+describe("design tokens match DigitoPub (app/globals.css)", () => {
+  const globals = read(path.join(ROOT, "app/globals.css"))
+  const tokensPath = path.join(STYLES, "tokens.less")
+  const tokens = existsSync(tokensPath) ? read(tokensPath) : ""
+
+  it("light tokens are identical", () => {
+    const dp = tokensIn(globals, /:root\s*\{/)
+    const sm = tokensIn(tokens, /:root\s*\{/)
+    for (const t of TOKENS) expect(sm[t], `--${t}`).toBe(dp[t])
+    expect(sm.radius).toBe(dp.radius)
+  })
+
+  it("dark tokens are identical (DigitoPub .dark == theme prefers-color-scheme: dark)", () => {
+    const dp = tokensIn(globals, /\n\.dark\s*\{/)
+    const sm = tokensIn(tokens, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root/)
+    for (const t of TOKENS) expect(sm[t], `--${t}`).toBe(dp[t])
+  })
+})
+
+// ── Stylesheet structure ─────────────────────────────────────────────────────
+
+const ENTRY_IMPORTS = [
+  "tokens.less",
+  "base.less",
+  "components/button.less",
+  "components/navbar.less",
+  "components/footer.less",
+  "legacy/site-home.less",
+  "legacy/journal-home.less",
+  "legacy/issue-preview.less",
+  "legacy/article-preview.less",
+  "legacy/auth.less",
+]
+
+describe("stylesheet structure", () => {
+  it("digitopub.less only imports partials, in contract order", () => {
+    const entry = read(path.join(STYLES, "digitopub.less"))
+    const code = entry.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").trim()
+    const imports = [...code.matchAll(/@import\s+(?:\(\w+\)\s+)?["']([^"']+)["'];/g)].map((m) => m[1])
+    expect(imports).toEqual(ENTRY_IMPORTS)
+    expect(code.replace(/@import[^;]+;/g, "").trim()).toBe("")
+    for (const f of ENTRY_IMPORTS) expect(existsSync(path.join(STYLES, f)), f).toBe(true)
+  })
+
+  it("has no plain .css files (everything goes through the one LESS bundle)", () => {
+    expect(walk(STYLES, ".css").map(rel)).toEqual([])
+  })
+
+  it("defines each shell component once", () => {
+    const all = lessFiles().map(read).join("\n")
+    for (const block of ["digitopub-btn", "digitopub-navbar", "digitopub-footer"]) {
+      const defs = all.match(new RegExp(`^\\s*\\.${block}\\s*\\{`, "gm")) ?? []
+      expect(defs.length, `.${block} definitions`).toBe(1)
+    }
+  })
+})
+
+// ── LESS hygiene (less.php traps + brand) ────────────────────────────────────
+
+describe("LESS hygiene", () => {
+  it("never uses !important", () => {
+    for (const f of lessFiles()) expect(read(f), rel(f)).not.toMatch(/!important/)
+  })
+
+  it("escapes every CSS math function (less.php miscompiles bare clamp/calc/min/max)", () => {
+    for (const f of lessFiles()) {
+      read(f).split("\n").forEach((line, i) => {
+        const code = line.replace(/\/\/.*$/, "")
+        if (/(?<![\w-])(calc|clamp|min|max)\(/.test(code)) {
+          expect(code, `${rel(f)}:${i + 1}`).toMatch(/~"[^"]*(calc|clamp|min|max)\(/)
+        }
+      })
+    }
+  })
+
+  it("has no pill radii or retired brand colours (teal / navy)", () => {
+    for (const f of lessFiles()) {
+      const src = read(f)
+      expect(src, rel(f)).not.toMatch(/9999px/)
+      expect(src, rel(f)).not.toMatch(/#(2a7f7f|1f6161|0a1f3d|06172b|14335c)\b/i)
+    }
+  })
+
+  it("new layers (base + components) use only tokens for colour", () => {
+    const fresh = lessFiles().filter((f) => /[\\/](base\.less|components[\\/])/.test(f))
+    expect(fresh.length).toBeGreaterThan(0)
+    for (const f of fresh) {
+      const code = read(f).replace(/\/\/.*$/gm, "")
+      expect(code, rel(f)).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(/i)
+    }
+  })
+})
+
+// ── Fonts & icons ────────────────────────────────────────────────────────────
+
+describe("vendored brand assets", () => {
+  it("ships Geist + Geist Mono with the OFL licence", () => {
+    for (const f of ["Geist-Variable.woff2", "GeistMono-Variable.woff2", "OFL.txt"]) {
+      expect(existsSync(path.join(THEME, "fonts", f)), f).toBe(true)
+    }
+  })
+
+  it("loads Geist via @font-face from the absolute theme URL", () => {
+    const base = read(path.join(STYLES, "base.less"))
+    expect(base).toMatch(/@font-face[\s\S]*font-family:\s*"Geist"/)
+    expect(base).toContain('url("@{baseUrl}/plugins/themes/digitopub/fonts/Geist-Variable.woff2")')
+    expect(base).toMatch(/font-display:\s*swap/)
+  })
+
+  const ICONS = ["menu", "x", "layout-dashboard", "log-in", "user-plus", "book-open", "external-link", "file-plus", "arrow-right"]
+  it.each(ICONS)("icon partial %s is a decorative Lucide SVG", (name) => {
+    const svg = read(path.join(THEME, "templates/frontend/components/icons", `${name}.tpl`)).trim()
+    expect(svg.startsWith("<svg")).toBe(true)
+    expect(svg).toContain('class="dp-icon')
+    expect(svg).toContain('aria-hidden="true"')
+    expect(svg).toContain('focusable="false"')
+    expect(svg).toContain('stroke="currentColor"')
+    expect(svg).not.toMatch(/[{}]/) // Smarty delimiters must not appear in markup
+  })
+})
+
+// ── Templates ────────────────────────────────────────────────────────────────
+
+describe("templates load styles only through the theme bundle", () => {
+  const templates = walk(path.join(THEME, "templates"), ".tpl")
+  it.each(templates.map((f) => [rel(f), f]))("%s has no stylesheet <link> or Google Fonts", (_, f) => {
+    const tpl = read(f)
+    expect(tpl).not.toMatch(/<link[^>]+rel="stylesheet"/)
+    expect(tpl).not.toContain("fonts.googleapis.com")
+  })
+})
+
+describe("base layer fixes the OJS default-theme shell", () => {
+  const base = () => read(path.join(STYLES, "base.less"))
+
+  it("uses Geist for body text", () => {
+    expect(base()).toMatch(/font-family:\s*var\(--font-sans\)/)
+  })
+
+  it("removes the default theme's 30px band above page content", () => {
+    expect(base()).toMatch(/\.pkp_structure_content\s*\{[^}]*padding-top:\s*0/)
+  })
+
+  it("provides a visible keyboard focus ring and honours reduced motion", () => {
+    expect(base()).toMatch(/:focus-visible\s*\{[^}]*outline:[^;]*var\(--ring\)/)
+    expect(base()).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+  })
+})
