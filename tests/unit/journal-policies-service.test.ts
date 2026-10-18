@@ -5,6 +5,9 @@ import {
   isValidPolicySlug,
   getPolicyTitleBySlug,
   APPROVED_POLICY_SLUGS,
+  isPolicySlugShape,
+  slugifyPolicyPath,
+  resolvePolicyRoute,
 } from "@/src/features/journals/server/journal-policies-service"
 
 describe("normalizePolicyKey", () => {
@@ -156,6 +159,66 @@ describe("isValidPolicySlug", () => {
   it("is case-sensitive (canonical lowercase only)", () => {
     expect(isValidPolicySlug("PRIVACY-STATEMENT")).toBe(false)
     expect(isValidPolicySlug("Privacy-Statement")).toBe(false)
+  })
+})
+
+describe("isPolicySlugShape", () => {
+  it("accepts lowercase kebab-case slugs", () => {
+    expect(isPolicySlugShape("repository-policy")).toBe(true)
+    expect(isPolicySlugShape("privacy-statement")).toBe(true)
+    expect(isPolicySlugShape("ai2-policy")).toBe(true)
+  })
+
+  it("rejects malformed slugs", () => {
+    expect(isPolicySlugShape("")).toBe(false)
+    expect(isPolicySlugShape(null)).toBe(false)
+    expect(isPolicySlugShape("Repository-Policy")).toBe(false)
+    expect(isPolicySlugShape("repository--policy")).toBe(false)
+    expect(isPolicySlugShape("-repository")).toBe(false)
+    expect(isPolicySlugShape("../etc/passwd")).toBe(false)
+    expect(isPolicySlugShape("a".repeat(81))).toBe(false)
+  })
+})
+
+describe("slugifyPolicyPath", () => {
+  it("kebab-cases OJS paths and titles", () => {
+    expect(slugifyPolicyPath("repository-policy")).toBe("repository-policy")
+    expect(slugifyPolicyPath("Repository Policy (Self-Archiving Policy)")).toBe(
+      "repository-policy-self-archiving-policy",
+    )
+    expect(slugifyPolicyPath("Data_Sharing & Reuse")).toBe("data-sharing-and-reuse")
+  })
+
+  it("returns empty string when nothing usable remains", () => {
+    expect(slugifyPolicyPath("!!!")).toBe("")
+    expect(slugifyPolicyPath(null)).toBe("")
+  })
+})
+
+describe("resolvePolicyRoute", () => {
+  const tabs = [
+    { slug: "privacy-statement", title: "Privacy Statement" },
+    { slug: "repository-policy", title: "Repository Policy (Self-Archiving Policy)" },
+  ]
+
+  it("uses the fetched OJS title for a dynamic slug", () => {
+    expect(resolvePolicyRoute("repository-policy", tabs)).toEqual({
+      found: true,
+      title: "Repository Policy (Self-Archiving Policy)",
+    })
+  })
+
+  it("is not found when OJS returned tabs and the slug is absent", () => {
+    expect(resolvePolicyRoute("no-such-policy", tabs)).toEqual({ found: false })
+  })
+
+  it("keeps known slugs resolvable even when the journal lacks that tab", () => {
+    expect(resolvePolicyRoute("dois-orcid", tabs)).toEqual({ found: true, title: "DOIs & ORCID" })
+  })
+
+  it("does not 404 when OJS is unavailable (no tabs)", () => {
+    expect(resolvePolicyRoute("repository-policy", null)).toEqual({ found: true, title: null })
+    expect(resolvePolicyRoute("repository-policy", [])).toEqual({ found: true, title: null })
   })
 })
 

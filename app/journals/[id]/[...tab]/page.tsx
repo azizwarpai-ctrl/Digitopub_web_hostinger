@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 
 import { prisma } from "@/src/lib/db/config"
 import { resolveJournalOjsId } from "@/src/features/journals/server/resolve-journal"
-import { getPolicyTitleBySlug } from "@/src/features/journals"
+import { isValidPolicySlug, resolvePolicyRoute } from "@/src/features/journals"
 import { getAboutTitleBySlug } from "@/src/features/journals"
 import { buildCanonical } from "@/src/lib/seo/canonical"
 import { JournalDetailView } from "@/app/journals/[id]/journal-detail-view"
@@ -37,6 +37,23 @@ const getJournalTitle = cache(async (id: string): Promise<string | null> => {
   return null
 })
 
+/**
+ * Policy tabs for a journal, fetched server-side only when a dynamic
+ * (non-canonical) policy slug is requested. `null` when OJS is unavailable.
+ */
+const getPolicyTabs = cache(async (ojsId: string | null) => {
+  if (!ojsId) return null
+  try {
+    const { isOjsConfigured } = await import("@/src/features/ojs/server/ojs-client")
+    if (!isOjsConfigured()) return null
+    const { fetchJournalPolicies } = await import("@/src/features/journals/server/journal-policies-service")
+    return (await fetchJournalPolicies(ojsId)).tabs
+  } catch (err) {
+    console.error("[journal-tab-route] failed to load policy tabs:", err)
+    return null
+  }
+})
+
 export async function generateMetadata({
   params,
 }: JournalTabRouteProps): Promise<Metadata> {
@@ -57,7 +74,12 @@ export async function generateMetadata({
   // Determine section title: prefer sub-tab title over main tab title.
   let sectionTitle: string
   if (resolved.tab === "policies" && resolved.policySlug) {
-    sectionTitle = getPolicyTitleBySlug(resolved.policySlug) ?? TAB_TITLES.policies
+    const policyTabs = isValidPolicySlug(resolved.policySlug)
+      ? null
+      : await getPolicyTabs(ojsResolved.found ? ojsResolved.ojsId : null)
+    const policyRoute = resolvePolicyRoute(resolved.policySlug, policyTabs)
+    if (!policyRoute.found) notFound()
+    sectionTitle = policyRoute.title ?? TAB_TITLES.policies
   } else if (resolved.tab === "about" && resolved.aboutSlug) {
     sectionTitle = getAboutTitleBySlug(resolved.aboutSlug) ?? TAB_TITLES.about
   } else {

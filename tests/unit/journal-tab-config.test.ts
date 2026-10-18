@@ -47,9 +47,19 @@ describe("resolveTabSegments", () => {
     })
   })
 
-  it("rejects an unknown policy slug", () => {
-    expect(resolveTabSegments(["policies", "bogus-policy"])).toBeNull()
-    expect(resolveTabSegments(["policies", "privacy"])).toBeNull()
+  it("accepts a well-formed dynamic policy slug from OJS (#182)", () => {
+    expect(resolveTabSegments(["policies", "repository-policy"])).toEqual({
+      tab: "policies",
+      policySlug: "repository-policy",
+      aboutSlug: null,
+    })
+  })
+
+  it("rejects a malformed policy slug", () => {
+    expect(resolveTabSegments(["policies", "Bad Slug!"])).toBeNull()
+    expect(resolveTabSegments(["policies", "../etc/passwd"])).toBeNull()
+    expect(resolveTabSegments(["policies", "-leading-dash"])).toBeNull()
+    expect(resolveTabSegments(["policies", "a".repeat(81)])).toBeNull()
   })
 
   it("resolves the about-journal tab with no sub-slug", () => {

@@ -1,35 +1,36 @@
 /**
  * Journal Policies Service
  *
- * Emits a strictly-filtered, fixed-order set of policy tabs from OJS.
+ * Emits the journal's policy tabs from OJS, in OJS creation order (#182).
  *
  * Data is discovered across multiple OJS sources:
  *   1. Navigation menu system — the "Journal Policies" custom menu
- *   2. Standalone navigation_menu_items with content
+ *   2. Standalone navigation_menu_items (custom pages + built-in Privacy)
  *   3. journal_settings — standard policy fields
  *   4. static_pages — plugin-managed content pages
  *
- * Every candidate is matched against an APPROVED_POLICIES whitelist by
- * normalized title / slug / path. Only matching candidates are emitted, and
- * the resulting tabs are returned in the canonical order defined below.
+ * A candidate becomes a tab when it either matches a KNOWN policy
+ * (APPROVED_POLICIES — canonical slug/title, aliases, settings fallbacks) or
+ * its title/path mentions "policy"/"policies". Everything else (Journal
+ * Information, Editorial Board, Author Guidelines, …) is dropped, as are
+ * empty containers such as the "Journal Policies" parent item.
  *
- * Required tabs (exact order, nothing else):
- *   1. Privacy Statement
- *   2. Policies on Ethics
- *   3. Copyright & Licensing Policies
- *   4. Editorial Workflow
- *   5. Indexing & Archiving
- *   6. DOIs & ORCID
+ * Tabs are ordered by the navigation_menu_item_id of the OJS page that backs
+ * them (i.e. the order editors created them in SubmitManager). Static pages
+ * follow nav items; policies that exist only in journal_settings come last.
  */
 
 import sanitizeHtml from "sanitize-html"
 import { getJournalPrimaryLocale, ojsQuery } from "@/src/features/ojs/server/ojs-client"
 import { rewriteOjsInlineImages } from "@/src/features/ojs/utils/rewrite-inline-images"
-import { POLICY_METADATA } from "@/src/features/journals/policy-slugs"
+import { POLICY_METADATA, slugifyPolicyPath } from "@/src/features/journals/policy-slugs"
 
 export {
   APPROVED_POLICY_SLUGS,
   isValidPolicySlug,
+  isPolicySlugShape,
+  slugifyPolicyPath,
+  resolvePolicyRoute,
   getPolicyTitleBySlug,
 } from "@/src/features/journals/policy-slugs"
 
@@ -51,13 +52,13 @@ export interface JournalPolicies {
 
 // ── Internal row types ──────────────────────────────────────────────────────
 
-interface SettingRow {
+export interface SettingRow {
   setting_name: string
   setting_value: string | null
   locale: string
 }
 
-interface MenuRow {
+export interface MenuRow {
   navigation_menu_item_id: number
   slug: string
   type: string
@@ -67,7 +68,7 @@ interface MenuRow {
   locale: string
 }
 
-interface StaticPageRow {
+export interface StaticPageRow {
   static_page_id: number
   path: string
   setting_name: string
@@ -75,13 +76,24 @@ interface StaticPageRow {
   locale: string
 }
 
-interface StandaloneNavRow {
+export interface StandaloneNavRow {
   navigation_menu_item_id: number
-  path: string
+  /** NULL for built-in items such as NMI_TYPE_PRIVACY */
+  path: string | null
   type: string
-  setting_name: string
+  /** NULL when the item has no settings rows (LEFT JOIN) */
+  setting_name: string | null
   setting_value: string | null
   locale: string
+}
+
+/** Raw OJS rows consumed by `buildPolicyTabs`. */
+export interface PolicySourceRows {
+  primaryLocale: string
+  menuRows: MenuRow[]
+  standaloneNavRows: StandaloneNavRow[]
+  policySettingRows: SettingRow[]
+  staticPageRows: StaticPageRow[]
 }
 
 // ── Approved policy whitelist ───────────────────────────────────────────────
@@ -327,9 +339,10 @@ function pickBestLocale(
 // ── Candidate collection ────────────────────────────────────────────────────
 //
 // A candidate is a piece of content + identifying keys (title, slug, path,
-// type, settingName). Candidates are matched against APPROVED_POLICIES and
-// non-matches are discarded. When multiple candidates target the same
-// approved policy, the first one (in source priority order) wins.
+// type, settingName) + an OJS creation-order key. Candidates are classified
+// into tab slots (known or dynamic policy); non-policies are discarded. When
+// several candidates land in the same slot, the lowest `priority` supplies
+// the content and the lowest `order` positions the tab.
 
 interface PolicyCandidate {
   titleHint: string | null
@@ -340,6 +353,239 @@ interface PolicyCandidate {
   content: string
   /** Lower = higher priority when multiple candidates match same policy */
   priority: number
+  /** OJS creation-order key — lower sorts first */
+  order: number
+}
+
+/** Static pages sort after every nav item. */
+const STATIC_PAGE_ORDER_BASE = 1_000_000_000
+/** journal_settings-only policies sort last, in known-policy order. */
+const SETTINGS_ORDER_BASE = 2_000_000_000
+
+/** Parent/container items that group policies rather than being one. */
+const POLICY_CONTAINER_KEYS = new Set(["policy", "policies", "journal policies", "journal policy"])
+
+type LocalizedSetting = { setting_name: string; setting_value: string | null; locale: string }
+
+interface NavItem {
+  id: number
+  path: string | null
+  type: string
+  settings: LocalizedSetting[]
+}
+
+function groupNavItems(
+  rows: ReadonlyArray<{
+    navigation_menu_item_id: number
+    path: string | null
+    type: string
+    setting_name: string | null
+    setting_value: string | null
+    locale: string
+  }>,
+): NavItem[] {
+  const items = new Map<number, NavItem>()
+  for (const row of rows) {
+    let item = items.get(row.navigation_menu_item_id)
+    if (!item) {
+      item = { id: row.navigation_menu_item_id, path: row.path || null, type: row.type || "", settings: [] }
+      items.set(row.navigation_menu_item_id, item)
+    }
+    if (row.setting_name) {
+      item.settings.push({
+        setting_name: row.setting_name,
+        setting_value: row.setting_value,
+        locale: row.locale,
+      })
+    }
+  }
+  return Array.from(items.values())
+}
+
+/**
+ * Resolve a nav item's HTML: its own content, else the journal_settings
+ * field behind a built-in type (e.g. NMI_TYPE_PRIVACY), else a static page
+ * sharing its path.
+ */
+function resolveNavItemContent(item: NavItem, rows: PolicySourceRows): string | null {
+  let content = pickBestLocale(item.settings, "content", rows.primaryLocale)
+
+  if (!content) {
+    const policyByType = APPROVED_POLICIES.find((p) => p.builtinTypes.includes(item.type))
+    if (policyByType) {
+      for (const settingName of policyByType.settingNames) {
+        content = pickBestLocale(rows.policySettingRows, settingName, rows.primaryLocale)
+        if (content) break
+      }
+    }
+  }
+
+  if (!content && item.path) {
+    const matching = rows.staticPageRows.filter((r) => r.path === item.path)
+    if (matching.length > 0) {
+      content = pickBestLocale(matching, "content", rows.primaryLocale)
+    }
+  }
+
+  return content
+}
+
+function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
+  const candidates: PolicyCandidate[] = []
+
+  const pushNavItems = (items: NavItem[], priority: number, pathAsSlug: boolean) => {
+    for (const item of items) {
+      const sanitized = sanitizePolicy(resolveNavItemContent(item, rows))
+      if (!sanitized.trim()) continue
+      candidates.push({
+        titleHint: pickBestLocale(item.settings, "title", rows.primaryLocale),
+        slug: pathAsSlug ? item.path : null,
+        path: pathAsSlug ? null : item.path,
+        type: item.type || null,
+        settingName: null,
+        content: sanitized,
+        priority,
+        order: item.id,
+      })
+    }
+  }
+
+  // SOURCE 1 — "Journal Policies" navigation menu (highest priority)
+  pushNavItems(groupNavItems(rows.menuRows.map((r) => ({ ...r, path: r.slug }))), 1, true)
+
+  // SOURCE 2 — Standalone navigation_menu_items (custom pages + built-ins)
+  pushNavItems(groupNavItems(rows.standaloneNavRows), 2, false)
+
+  // SOURCE 3 — journal_settings keys directly
+  APPROVED_POLICIES.forEach((policy, index) => {
+    for (const settingName of policy.settingNames) {
+      const sanitized = sanitizePolicy(pickBestLocale(rows.policySettingRows, settingName, rows.primaryLocale))
+      if (!sanitized.trim()) continue
+      candidates.push({
+        titleHint: null,
+        slug: null,
+        path: null,
+        type: null,
+        settingName,
+        content: sanitized,
+        priority: 3,
+        order: SETTINGS_ORDER_BASE + index,
+      })
+    }
+  })
+
+  // SOURCE 4 — static_pages
+  const staticPages = new Map<number, { path: string; settings: LocalizedSetting[] }>()
+  for (const row of rows.staticPageRows) {
+    if (!staticPages.has(row.static_page_id)) {
+      staticPages.set(row.static_page_id, { path: row.path, settings: [] })
+    }
+    if (row.setting_name) {
+      staticPages.get(row.static_page_id)!.settings.push({
+        setting_name: row.setting_name,
+        setting_value: row.setting_value,
+        locale: row.locale,
+      })
+    }
+  }
+  for (const [id, page] of staticPages) {
+    const sanitized = sanitizePolicy(pickBestLocale(page.settings, "content", rows.primaryLocale))
+    if (!sanitized.trim()) continue
+    candidates.push({
+      titleHint: pickBestLocale(page.settings, "title", rows.primaryLocale),
+      slug: null,
+      path: page.path || null,
+      type: null,
+      settingName: null,
+      content: sanitized,
+      priority: 4,
+      order: STATIC_PAGE_ORDER_BASE + id,
+    })
+  }
+
+  return candidates
+}
+
+// ── Classification ──────────────────────────────────────────────────────────
+
+interface PolicySlot {
+  slug: string
+  title: string
+  /** Tie-break when two slots share an order key */
+  knownIndex: number
+}
+
+function mentionsPolicy(value: string | null): boolean {
+  const key = normalizePolicyKey(value)
+  if (!key || POLICY_CONTAINER_KEYS.has(key)) return false
+  return key.split(" ").some((token) => token === "policy" || token === "policies")
+}
+
+function isPolicyContainer(candidate: PolicyCandidate): boolean {
+  return [candidate.titleHint, candidate.slug, candidate.path].some((v) =>
+    POLICY_CONTAINER_KEYS.has(normalizePolicyKey(v)),
+  )
+}
+
+function humanizeSlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+function classifyCandidate(candidate: PolicyCandidate): PolicySlot | null {
+  if (isPolicyContainer(candidate)) return null
+
+  const byType = candidate.type
+    ? APPROVED_POLICIES.find((p) => p.builtinTypes.includes(candidate.type!))
+    : undefined
+  const known =
+    byType ??
+    matchApprovedPolicy([candidate.titleHint, candidate.slug, candidate.path, candidate.settingName])
+  if (known) {
+    return { slug: known.slug, title: known.title, knownIndex: APPROVED_POLICIES.indexOf(known) }
+  }
+
+  const pathOrSlug = candidate.path ?? candidate.slug
+  if (!mentionsPolicy(candidate.titleHint) && !mentionsPolicy(pathOrSlug)) return null
+
+  const slug = slugifyPolicyPath(pathOrSlug) || slugifyPolicyPath(candidate.titleHint)
+  if (!slug) return null
+
+  return {
+    slug,
+    title: candidate.titleHint?.trim() || humanizeSlug(slug),
+    knownIndex: APPROVED_POLICIES.length,
+  }
+}
+
+/**
+ * Turn raw OJS rows into ordered policy tabs. Pure — no I/O — so the
+ * classification and ordering rules are unit-testable.
+ */
+export function buildPolicyTabs(rows: PolicySourceRows): PolicyTab[] {
+  const slots = new Map<string, { slot: PolicySlot; content: string; priority: number; order: number }>()
+
+  for (const candidate of collectCandidates(rows)) {
+    const slot = classifyCandidate(candidate)
+    if (!slot) continue
+
+    const existing = slots.get(slot.slug)
+    if (!existing) {
+      slots.set(slot.slug, { slot, content: candidate.content, priority: candidate.priority, order: candidate.order })
+      continue
+    }
+    if (candidate.priority < existing.priority) {
+      existing.content = candidate.content
+      existing.priority = candidate.priority
+    }
+    existing.order = Math.min(existing.order, candidate.order)
+  }
+
+  return Array.from(slots.values())
+    .sort((a, b) => a.order - b.order || a.slot.knownIndex - b.slot.knownIndex)
+    .map(({ slot, content }) => ({ title: slot.title, slug: slot.slug, content }))
 }
 
 // ── Main entry point ────────────────────────────────────────────────────────
@@ -364,6 +610,10 @@ export async function fetchJournalPolicies(ojsJournalId: string): Promise<Journa
     new Set(APPROVED_POLICIES.flatMap((p) => p.settingNames)),
   )
   const policyPlaceholders = allPolicySettingNames.map(() => "?").join(", ")
+
+  const builtinTypes = Array.from(new Set(APPROVED_POLICIES.flatMap((p) => p.builtinTypes)))
+  const builtinTypeClause =
+    builtinTypes.length > 0 ? ` OR nmi.type IN (${builtinTypes.map(() => "?").join(", ")})` : ""
 
   const [configRows, menuRows, policySettingRows, staticPageRows, standaloneNavRows] = await Promise.all([
     // 1. DOI / Competing-Interests toggles
@@ -438,7 +688,9 @@ export async function fetchJournalPolicies(ojsJournalId: string): Promise<Journa
       return []
     }),
 
-    // 5. Standalone navigation_menu_items with content for this journal.
+    // 5. Standalone navigation_menu_items for this journal: custom pages
+    //    (have a path) plus built-in policy items such as NMI_TYPE_PRIVACY
+    //    (no path) so they take their place in OJS creation order.
     ojsQuery<StandaloneNavRow>(
       `SELECT
           nmi.navigation_menu_item_id,
@@ -451,270 +703,34 @@ export async function fetchJournalPolicies(ojsJournalId: string): Promise<Journa
        LEFT JOIN navigation_menu_item_settings nmis
          ON nmi.navigation_menu_item_id = nmis.navigation_menu_item_id
        WHERE nmi.context_id = ?
-         AND nmi.path IS NOT NULL
-         AND nmi.path != ''`,
-      [journalId],
+         AND ((nmi.path IS NOT NULL AND nmi.path != '')${builtinTypeClause})`,
+      [journalId, ...builtinTypes],
     ).catch((err): StandaloneNavRow[] => {
       console.error(`[JournalPolicies] Failed to load standalone nav items for journal_id=${journalId}:`, err)
       return []
     }),
   ])
 
-  // ── Config toggles ─────────────────────────────────────────────────────
+  const tabs = buildPolicyTabs({
+    primaryLocale,
+    menuRows,
+    standaloneNavRows,
+    policySettingRows,
+    staticPageRows,
+  })
 
-  const doiRaw = pickBestLocale(configRows, "enableDois", primaryLocale)
-  const competingInterestsRaw = pickBestLocale(configRows, "requireAuthorCompetingInterests", primaryLocale)
-
-  // ── Gather candidates from every source ─────────────────────────────────
-
-  const candidates: PolicyCandidate[] = []
-
-  // SOURCE 1 — "Journal Policies" navigation menu (highest priority)
-  if (menuRows.length > 0) {
-    const itemsMap = new Map<
-      number,
-      {
-        id: number
-        slug: string
-        type: string
-        seq: number
-        settings: { setting_name: string; setting_value: string | null; locale: string }[]
-      }
-    >()
-
-    for (const row of menuRows) {
-      if (!itemsMap.has(row.navigation_menu_item_id)) {
-        itemsMap.set(row.navigation_menu_item_id, {
-          id: row.navigation_menu_item_id,
-          slug: row.slug,
-          type: row.type || "",
-          seq: row.seq,
-          settings: [],
-        })
-      }
-      if (row.setting_name) {
-        itemsMap.get(row.navigation_menu_item_id)!.settings.push({
-          setting_name: row.setting_name,
-          setting_value: row.setting_value,
-          locale: row.locale,
-        })
-      }
-    }
-
-    for (const item of Array.from(itemsMap.values()).sort((a, b) => a.seq - b.seq)) {
-      const titleHint = pickBestLocale(item.settings, "title", primaryLocale)
-      let content = pickBestLocale(item.settings, "content", primaryLocale)
-
-      // Built-in types (e.g. NMI_TYPE_PRIVACY) resolve content from journal_settings
-      if (!content) {
-        const policyByType = APPROVED_POLICIES.find((p) => p.builtinTypes.includes(item.type))
-        if (policyByType) {
-          for (const settingName of policyByType.settingNames) {
-            content = pickBestLocale(policySettingRows, settingName, primaryLocale)
-            if (content) break
-          }
-        }
-      }
-
-      // Resolve via matching static page
-      if (!content && item.slug) {
-        const matching = staticPageRows.filter((r) => r.path === item.slug)
-        if (matching.length > 0) {
-          content = pickBestLocale(
-            matching.map((r) => ({
-              setting_name: r.setting_name,
-              setting_value: r.setting_value,
-              locale: r.locale,
-            })),
-            "content",
-            primaryLocale,
-          )
-        }
-      }
-
-      const sanitized = sanitizePolicy(content)
-      if (!sanitized.trim()) continue
-
-      candidates.push({
-        titleHint,
-        slug: item.slug || null,
-        path: null,
-        type: item.type || null,
-        settingName: null,
-        content: sanitized,
-        priority: 1,
-      })
-    }
-  }
-
-  // SOURCE 2 — Standalone navigation_menu_items
-  if (standaloneNavRows.length > 0) {
-    const standaloneMap = new Map<
-      number,
-      {
-        path: string
-        type: string
-        settings: { setting_name: string; setting_value: string | null; locale: string }[]
-      }
-    >()
-
-    for (const row of standaloneNavRows) {
-      if (!standaloneMap.has(row.navigation_menu_item_id)) {
-        standaloneMap.set(row.navigation_menu_item_id, {
-          path: row.path,
-          type: row.type || "",
-          settings: [],
-        })
-      }
-      if (row.setting_name) {
-        standaloneMap.get(row.navigation_menu_item_id)!.settings.push({
-          setting_name: row.setting_name,
-          setting_value: row.setting_value,
-          locale: row.locale,
-        })
-      }
-    }
-
-    for (const [, item] of standaloneMap) {
-      const titleHint = pickBestLocale(item.settings, "title", primaryLocale)
-      let content = pickBestLocale(item.settings, "content", primaryLocale)
-
-      if (!content) {
-        const policyByType = APPROVED_POLICIES.find((p) => p.builtinTypes.includes(item.type))
-        if (policyByType) {
-          for (const settingName of policyByType.settingNames) {
-            content = pickBestLocale(policySettingRows, settingName, primaryLocale)
-            if (content) break
-          }
-        }
-      }
-
-      if (!content && item.path) {
-        const matching = staticPageRows.filter((r) => r.path === item.path)
-        if (matching.length > 0) {
-          content = pickBestLocale(
-            matching.map((r) => ({
-              setting_name: r.setting_name,
-              setting_value: r.setting_value,
-              locale: r.locale,
-            })),
-            "content",
-            primaryLocale,
-          )
-        }
-      }
-
-      const sanitized = sanitizePolicy(content)
-      if (!sanitized.trim()) continue
-
-      candidates.push({
-        titleHint,
-        slug: null,
-        path: item.path || null,
-        type: item.type || null,
-        settingName: null,
-        content: sanitized,
-        priority: 2,
-      })
-    }
-  }
-
-  // SOURCE 3 — journal_settings keys directly
+  // Missing known policies are hidden; log so operators can see which
+  // policies are unconfigured on the OJS side.
   for (const policy of APPROVED_POLICIES) {
-    for (const settingName of policy.settingNames) {
-      const raw = pickBestLocale(policySettingRows, settingName, primaryLocale)
-      const sanitized = sanitizePolicy(raw)
-      if (!sanitized.trim()) continue
-      candidates.push({
-        titleHint: null,
-        slug: null,
-        path: null,
-        type: null,
-        settingName,
-        content: sanitized,
-        priority: 3,
-      })
-    }
-  }
-
-  // SOURCE 4 — static_pages
-  const staticPagesMap = new Map<
-    number,
-    { path: string; settings: { setting_name: string; setting_value: string | null; locale: string }[] }
-  >()
-  for (const row of staticPageRows) {
-    if (!staticPagesMap.has(row.static_page_id)) {
-      staticPagesMap.set(row.static_page_id, { path: row.path, settings: [] })
-    }
-    if (row.setting_name) {
-      staticPagesMap.get(row.static_page_id)!.settings.push({
-        setting_name: row.setting_name,
-        setting_value: row.setting_value,
-        locale: row.locale,
-      })
-    }
-  }
-  for (const [, page] of staticPagesMap) {
-    const titleHint = pickBestLocale(page.settings, "title", primaryLocale)
-    const raw = pickBestLocale(page.settings, "content", primaryLocale)
-    const sanitized = sanitizePolicy(raw)
-    if (!sanitized.trim()) continue
-    candidates.push({
-      titleHint,
-      slug: null,
-      path: page.path || null,
-      type: null,
-      settingName: null,
-      content: sanitized,
-      priority: 4,
-    })
-  }
-
-  // ── Strict filter: map each candidate to an approved policy slot ────────
-
-  const slots = new Map<string, { policy: ApprovedPolicy; content: string; priority: number }>()
-
-  for (const candidate of candidates) {
-    const policy = matchApprovedPolicy([
-      candidate.titleHint,
-      candidate.slug,
-      candidate.path,
-      candidate.settingName,
-    ])
-    if (!policy) {
-      // Non-approved: skip silently (this is the whole point of the filter).
-      continue
-    }
-
-    const existing = slots.get(policy.slug)
-    if (!existing || candidate.priority < existing.priority) {
-      slots.set(policy.slug, {
-        policy,
-        content: candidate.content,
-        priority: candidate.priority,
-      })
-    }
-  }
-
-  // ── Emit in canonical order ─────────────────────────────────────────────
-
-  const tabs: PolicyTab[] = []
-  for (const policy of APPROVED_POLICIES) {
-    const slot = slots.get(policy.slug)
-    if (!slot) {
-      // Missing content — hide the tab and log a warning so operators can
-      // see which policies are unconfigured on the OJS side.
+    if (!tabs.some((t) => t.slug === policy.slug)) {
       console.warn(
         `[JournalPolicies] No OJS content found for approved policy "${policy.title}" (journal_id=${journalId}).`,
       )
-      continue
     }
-    tabs.push({
-      title: policy.title,
-      slug: policy.slug,
-      content: slot.content,
-    })
   }
+
+  const doiRaw = pickBestLocale(configRows, "enableDois", primaryLocale)
+  const competingInterestsRaw = pickBestLocale(configRows, "requireAuthorCompetingInterests", primaryLocale)
 
   return {
     tabs,
