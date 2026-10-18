@@ -1,0 +1,728 @@
+/**
+ * plugins/themes/digitopub/styles/digitopub-auth-layout.css
+ *
+ * Modern authentication page overrides (login, register, lost password)
+ * for the Digitopub theme.
+ *
+ * Loaded directly by each auth template to bypass the compiled theme cache.
+ */
+
+/* Scope to authentication pages */
+.pkp_page_login.pkp_op_index .pkp_structure_content,
+.pkp_page_login.pkp_op_index .pkp_structure_footer,
+.pkp_page_user.pkp_op_register .pkp_structure_content,
+.pkp_page_user.pkp_op_register .pkp_structure_footer,
+.pkp_page_login.pkp_op_lostPassword .pkp_structure_content,
+.pkp_page_login.pkp_op_lostPassword .pkp_structure_footer {
+	width: 100%;
+	max-width: none;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.pkp_page_login.pkp_op_index .pkp_structure_main,
+.pkp_page_user.pkp_op_register .pkp_structure_main,
+.pkp_page_login.pkp_op_lostPassword .pkp_structure_main {
+	float: none;
+	width: 100%;
+	max-width: none;
+	padding: 0;
+	margin: 0;
+}
+
+.pkp_page_login.pkp_op_index .pkp_structure_main:before,
+.pkp_page_login.pkp_op_index .pkp_structure_main:after,
+.pkp_page_user.pkp_op_register .pkp_structure_main:before,
+.pkp_page_user.pkp_op_register .pkp_structure_main:after,
+.pkp_page_login.pkp_op_lostPassword .pkp_structure_main:before,
+.pkp_page_login.pkp_op_lostPassword .pkp_structure_main:after {
+	display: none;
+}
+
+/* Hide default OJS page title / breadcrumbs on auth pages */
+.pkp_page_login.pkp_op_index .cmp_breadcrumbs,
+.pkp_page_user.pkp_op_register .cmp_breadcrumbs,
+.pkp_page_login.pkp_op_lostPassword .cmp_breadcrumbs,
+.pkp_page_login.pkp_op_index .page > h1,
+.pkp_page_user.pkp_op_register .page > h1,
+.pkp_page_login.pkp_op_lostPassword .page > h1,
+.pkp_page_login.pkp_op_index .page > p:first-of-type,
+.pkp_page_user.pkp_op_register .page > p:first-of-type,
+.pkp_page_login.pkp_op_lostPassword .page > p:first-of-type {
+	display: none;
+}
+
+/* Auth layout container */
+.digitopub-auth-page {
+	display: flex;
+	min-height: calc(100vh - 180px);
+	background: #f1f5f9;
+}
+
+.digitopub-auth-layout {
+	display: flex;
+	width: 100%;
+	min-height: calc(100vh - 180px);
+}
+
+/* Left panel – branding */
+.digitopub-auth-brand {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	width: 46%;
+	padding: 3rem 4rem;
+	background:
+		radial-gradient(circle at 15% 20%, rgba(42, 127, 127, 0.22) 0%, transparent 35%),
+		radial-gradient(circle at 85% 80%, rgba(42, 127, 127, 0.18) 0%, transparent 40%),
+		linear-gradient(145deg, #0a1f3d 0%, #0f2d4d 55%, #14335c 100%);
+	color: #fff;
+	overflow: hidden;
+}
+
+.digitopub-auth-brand__pattern {
+	position: absolute;
+	inset: 0;
+	opacity: 0.08;
+	pointer-events: none;
+	background-image:
+		linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px);
+	background-size: 48px 48px;
+}
+
+.digitopub-auth-brand__content {
+	position: relative;
+	z-index: 2;
+	max-width: 520px;
+}
+
+.digitopub-auth-brand__logo {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.75rem;
+	font-size: 1.35rem;
+	font-weight: 800;
+	margin-bottom: 2.5rem;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	padding: 0.6rem 1rem;
+	border-radius: 999px;
+	backdrop-filter: blur(6px);
+}
+
+.digitopub-auth-brand__logo-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	background: rgba(255, 255, 255, 0.15);
+	border-radius: 50%;
+}
+
+.digitopub-auth-brand__title {
+	font-size: clamp(2.25rem, 4vw, 3.25rem);
+	font-weight: 800;
+	line-height: 1.1;
+	margin: 0 0 1rem;
+}
+
+.digitopub-auth-brand__subtitle {
+	font-size: 1.25rem;
+	font-weight: 500;
+	opacity: 0.92;
+	margin: 0 0 1.25rem;
+}
+
+.digitopub-auth-brand__description {
+	font-size: 1rem;
+	line-height: 1.7;
+	opacity: 0.78;
+	margin: 0 0 2.5rem;
+}
+
+.digitopub-auth-brand__features {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 1rem;
+}
+
+.digitopub-auth-brand__feature {
+	display: flex;
+	align-items: center;
+	gap: 0.85rem;
+	font-size: 0.95rem;
+	font-weight: 500;
+	background: rgba(255, 255, 255, 0.07);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	padding: 0.8rem 1rem;
+	border-radius: 0.75rem;
+	backdrop-filter: blur(4px);
+}
+
+.digitopub-auth-brand__feature-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	background: rgba(42, 127, 127, 0.35);
+	border-radius: 0.5rem;
+	flex-shrink: 0;
+}
+
+.digitopub-auth-brand__illustration {
+	position: absolute;
+	bottom: -40px;
+	right: -40px;
+	width: 360px;
+	height: 360px;
+	opacity: 0.18;
+	pointer-events: none;
+	z-index: 1;
+}
+
+/* Right panel – form */
+.digitopub-auth-form {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 54%;
+	padding: 2.5rem;
+	background: #f1f5f9;
+}
+
+.digitopub-auth-card {
+	width: 100%;
+	max-width: 560px;
+	background: #fff;
+	border-radius: 20px;
+	padding: 2.75rem;
+	box-shadow: 0 24px 70px rgba(10, 31, 61, 0.1);
+	box-sizing: border-box;
+}
+
+.digitopub-auth-card__header {
+	margin-bottom: 2rem;
+}
+
+.digitopub-auth-card__kicker {
+	display: inline-block;
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #1a6fc4;
+	background: #eff6ff;
+	padding: 0.35rem 0.85rem;
+	border-radius: 999px;
+	margin-bottom: 0.75rem;
+}
+
+.digitopub-auth-card__title {
+	font-size: 1.85rem;
+	font-weight: 800;
+	color: #0f172a;
+	margin: 0 0 0.5rem;
+	line-height: 1.2;
+}
+
+.digitopub-auth-card__subtitle {
+	font-size: 1rem;
+	color: #64748b;
+	margin: 0;
+	line-height: 1.5;
+}
+
+/* Form fields */
+.digitopub-auth-form__group {
+	margin-bottom: 1.5rem;
+}
+
+.digitopub-auth-form__group--half {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+}
+
+.digitopub-auth-form__label {
+	display: block;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 0.5rem;
+}
+
+.digitopub-auth-form__label .required {
+	color: #dc2626;
+	margin-left: 0.15rem;
+}
+
+.digitopub-auth-form__input-wrap {
+	display: block;
+}
+
+/* Fallback default input (used by registration forms without icons) */
+.digitopub-auth-form__input {
+	width: 100%;
+	height: 3.5rem;
+	padding: 0 1rem;
+	font-size: 1rem;
+	color: #0f172a;
+	background: #f8fafc;
+	border: 1px solid #d1d5db;
+	border-radius: 0.75rem;
+	box-sizing: border-box;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.digitopub-auth-form__input:focus {
+	outline: none;
+	border-color: #1a6fc4;
+	background: #fff;
+	box-shadow: 0 0 0 4px rgba(26, 111, 196, 0.12);
+}
+
+.digitopub-auth-form__input::placeholder {
+	color: #9ca3af;
+	opacity: 1;
+}
+
+/* Modern floating-icon input field (login, lost password) */
+.digitopub-auth-form__field {
+	position: relative;
+	display: flex;
+	align-items: center;
+	height: 3.5rem;
+	background: #f8fafc;
+	border: 1px solid #d1d5db;
+	border-radius: 0.75rem;
+	box-sizing: border-box;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.digitopub-auth-form__field:focus-within {
+	outline: none;
+	border-color: #1a6fc4;
+	background: #fff;
+	box-shadow: 0 0 0 4px rgba(26, 111, 196, 0.12);
+}
+
+.digitopub-auth-form__field:has(.digitopub-auth-form__field-input.error) {
+	border-color: #dc2626;
+	background: #fef2f2;
+}
+
+.digitopub-auth-form__field-icon {
+	position: absolute;
+	left: 1.25rem;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.125rem;
+	height: 1.125rem;
+	color: #9ca3af;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.digitopub-auth-form__field-icon svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.digitopub-auth-form__field-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 100%;
+	height: 100%;
+	padding: 0 1rem 0 3.75rem;
+	border: none;
+	background: transparent;
+	font-size: 1rem;
+	line-height: 1.25;
+	color: #0f172a;
+	outline: none;
+}
+
+.digitopub-auth-form__field:has(.digitopub-auth-form__field-toggle) .digitopub-auth-form__field-input {
+	padding-right: 3.5rem;
+}
+
+.digitopub-auth-form__field-input::placeholder {
+	color: #9ca3af;
+	opacity: 1;
+}
+
+.digitopub-auth-form__field-input:focus {
+	outline: none;
+}
+
+.digitopub-auth-form__field-toggle {
+	position: absolute;
+	right: 0.75rem;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	background: transparent;
+	border: none;
+	border-radius: 0.5rem;
+	color: #475569;
+	cursor: pointer;
+	transition: color 0.2s ease, background 0.2s ease;
+}
+
+.digitopub-auth-form__field-toggle svg {
+	display: block;
+	width: 1.125rem;
+	height: 1.125rem;
+}
+
+.digitopub-auth-form__field-toggle:hover,
+.digitopub-auth-form__field-toggle:focus {
+	color: #0f172a;
+	background: #e2e8f0;
+}
+
+select.digitopub-auth-form__input {
+	padding-left: 1rem;
+	appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%2394a3b8' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.85rem center;
+	background-size: 1.25rem;
+}
+
+/* Checkbox / consent */
+.digitopub-auth-form__check {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.6rem;
+	font-size: 0.9rem;
+	color: #334155;
+	line-height: 1.4;
+	margin-bottom: 1rem;
+}
+
+.digitopub-auth-form__check input[type="checkbox"] {
+	width: 1.1rem;
+	height: 1.1rem;
+	margin-top: 0.1rem;
+	accent-color: #0a1f3d;
+	flex-shrink: 0;
+}
+
+.digitopub-auth-form__check a {
+	color: #1a6fc4;
+	text-decoration: none;
+}
+
+.digitopub-auth-form__check a:hover {
+	text-decoration: underline;
+}
+
+/* Inline actions row */
+.digitopub-auth-form__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+	font-size: 0.9rem;
+}
+
+.digitopub-auth-form__link {
+	color: #1a6fc4;
+	text-decoration: none;
+	font-weight: 600;
+	transition: color 0.2s ease;
+}
+
+.digitopub-auth-form__link:hover {
+	color: #0f172a;
+	text-decoration: underline;
+}
+
+/* Buttons */
+.digitopub-auth-form__actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.85rem;
+	margin-top: 0.5rem;
+}
+
+.digitopub-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	font-size: 1rem;
+	font-weight: 600;
+	padding: 0.9rem 1.5rem;
+	border-radius: 0.75rem;
+	text-decoration: none;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.digitopub-btn--primary {
+	background: #0a1f3d;
+	color: #fff;
+	box-shadow: 0 4px 14px rgba(10, 31, 61, 0.25);
+}
+
+.digitopub-btn--primary:hover {
+	background: #06172b;
+	transform: translateY(-2px);
+	box-shadow: 0 8px 22px rgba(10, 31, 61, 0.32);
+}
+
+.digitopub-btn--primary:disabled,
+.digitopub-btn--primary.is-loading {
+	opacity: 0.75;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.digitopub-btn--outline {
+	background: transparent;
+	color: #0a1f3d;
+	border-color: #d1d5db;
+}
+
+.digitopub-btn--outline:hover {
+	background: #f1f5f9;
+	border-color: #bfc8d2;
+}
+
+.digitopub-btn--block {
+	width: 100%;
+}
+
+.digitopub-btn__spinner {
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid rgba(255,255,255,0.4);
+	border-top-color: #fff;
+	border-radius: 50%;
+	animation: digitopub-spin 0.8s linear infinite;
+	display: none;
+}
+
+.digitopub-btn.is-loading .digitopub-btn__spinner {
+	display: inline-block;
+}
+
+@keyframes digitopub-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* Also style default OJS form inputs inside the auth card (registrationForm.tpl etc.) */
+.digitopub-auth-form__body input[type="text"],
+.digitopub-auth-form__body input[type="email"],
+.digitopub-auth-form__body input[type="password"],
+.digitopub-auth-form__body input[type="url"],
+.digitopub-auth-form__body input[type="tel"],
+.digitopub-auth-form__body select,
+.digitopub-auth-form__body textarea {
+	width: 100%;
+	height: 3.5rem;
+	padding: 0 1rem;
+	font-size: 1rem;
+	color: #0f172a;
+	background: #f8fafc;
+	border: 1px solid #d1d5db;
+	border-radius: 0.75rem;
+	box-sizing: border-box;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.digitopub-auth-form__body input[type="text"]:focus,
+.digitopub-auth-form__body input[type="email"]:focus,
+.digitopub-auth-form__body input[type="password"]:focus,
+.digitopub-auth-form__body input[type="url"]:focus,
+.digitopub-auth-form__body input[type="tel"]:focus,
+.digitopub-auth-form__body select:focus,
+.digitopub-auth-form__body textarea:focus {
+	outline: none;
+	border-color: #1a6fc4;
+	background: #fff;
+	box-shadow: 0 0 0 4px rgba(26, 111, 196, 0.12);
+}
+
+.digitopub-auth-form__body label > .label {
+	display: block;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 0.5rem;
+}
+
+.digitopub-auth-form__body label > .label .required {
+	color: #dc2626;
+	margin-left: 0.15rem;
+}
+
+.digitopub-auth-form__body fieldset {
+	border: none;
+	padding: 0;
+	margin: 0 0 1.5rem;
+}
+
+.digitopub-auth-form__body fieldset legend {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 0.75rem;
+}
+
+.digitopub-auth-form__body .fields > div {
+	margin-bottom: 1.25rem;
+}
+
+.digitopub-auth-form__body .fields > div:last-child {
+	margin-bottom: 0;
+}
+
+/* Alerts */
+.digitopub-auth-alert {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 1rem;
+	border-radius: 0.75rem;
+	margin-bottom: 1.25rem;
+	font-size: 0.95rem;
+	line-height: 1.5;
+}
+
+.digitopub-auth-alert--error {
+	background: #fef2f2;
+	color: #991b1b;
+	border: 1px solid #fecaca;
+}
+
+.digitopub-auth-alert--success {
+	background: #f0fdf4;
+	color: #166534;
+	border: 1px solid #bbf7d0;
+}
+
+.digitopub-auth-alert--info {
+	background: #eff6ff;
+	color: #1e40af;
+	border: 1px solid #bfdbfe;
+}
+
+.digitopub-auth-alert a {
+	color: inherit;
+	text-decoration: underline;
+	font-weight: 600;
+}
+
+/* OJS error / message compatibility */
+.pkp_page_login .pkp_form_error,
+.pkp_page_user .pkp_form_error {
+	background: #fef2f2;
+	color: #991b1b;
+	border: 1px solid #fecaca;
+	border-radius: 0.75rem;
+	padding: 1rem;
+	margin-bottom: 1.25rem;
+	font-size: 0.95rem;
+}
+
+/* Footer alignment */
+.pkp_page_login.pkp_op_index .digitopub-footer__inner,
+.pkp_page_user.pkp_op_register .digitopub-footer__inner,
+.pkp_page_login.pkp_op_lostPassword .digitopub-footer__inner {
+	max-width: 1700px;
+}
+
+/* Responsive */
+@media (max-width: 1199px) {
+	.digitopub-auth-brand {
+		width: 42%;
+		padding: 2.5rem 2.5rem;
+	}
+
+	.digitopub-auth-form {
+		width: 58%;
+		padding: 2rem;
+	}
+
+	.digitopub-auth-card {
+		padding: 2.25rem;
+	}
+}
+
+@media (max-width: 991px) {
+	.digitopub-auth-layout {
+		flex-direction: column;
+	}
+
+	.digitopub-auth-brand {
+		width: 100%;
+		min-height: auto;
+		padding: 2.5rem 1.5rem;
+		text-align: center;
+		align-items: center;
+	}
+
+	.digitopub-auth-brand__content {
+		max-width: 520px;
+	}
+
+	.digitopub-auth-brand__logo {
+		margin-bottom: 1.5rem;
+	}
+
+	.digitopub-auth-brand__description {
+		margin-bottom: 1.5rem;
+	}
+
+	.digitopub-auth-brand__features {
+		max-width: 360px;
+		margin: 0 auto;
+	}
+
+	.digitopub-auth-brand__illustration {
+		display: none;
+	}
+
+	.digitopub-auth-form {
+		width: 100%;
+		padding: 2rem 1.25rem;
+	}
+
+	.digitopub-auth-card {
+		padding: 2rem;
+	}
+}
+
+@media (max-width: 479px) {
+	.digitopub-auth-card {
+		padding: 1.5rem;
+		border-radius: 1rem;
+	}
+
+	.digitopub-auth-card__title {
+		font-size: 1.6rem;
+	}
+
+	.digitopub-auth-form__group--half {
+		grid-template-columns: 1fr;
+	}
+}

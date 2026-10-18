@@ -19,6 +19,7 @@ export default [
             'scripts/**', // Ignore scripts if not in tsconfig
             'tests/**',    // Ignore tests if not in tsconfig or handle separately
             'submit_manger_api/**',
+            'ojs-theme/**', // OJS (PHP/Smarty) theme deployed to SiteGround, not part of the Next app
             'server.js',
             '**/*.cjs',
             'vitest.config.ts',
