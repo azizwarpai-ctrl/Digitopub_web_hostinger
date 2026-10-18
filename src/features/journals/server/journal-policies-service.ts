@@ -59,7 +59,10 @@ export interface MenuRow {
   navigation_menu_item_id: number
   slug: string
   type: string
+  /** Position among siblings in the "Journal Policies" menu */
   seq: number
+  /** The parent item's seq when nested under a dropdown parent, else NULL */
+  parent_seq: number | null
   setting_name: string
   setting_value: string | null
   locale: string
@@ -342,15 +345,26 @@ function pickBestLocale(
 // candidates land in the same slot, the lowest `priority` supplies the
 // content and the earliest `position` places the tab.
 
-const NAV_ITEM_RANK = 0
-const STATIC_PAGE_RANK = 1
-const SETTINGS_RANK = 2
+const MENU_RANK = 0
+const NAV_ITEM_RANK = 1
+const STATIC_PAGE_RANK = 2
+const SETTINGS_RANK = 3
 
-/** A candidate's place in OJS creation order — compared by rank, then id. */
+/**
+ * Sibling slots per menu parent. Nested items sort right after their parent:
+ * parentSeq * MENU_CHILD_SLOTS + seq + 1.
+ */
+const MENU_CHILD_SLOTS = 1000
+
+/** A candidate's place in OJS order — compared by rank, then id. */
 interface OjsPosition {
-  /** Nav items, then static pages, then journal_settings-only policies */
-  sourceRank: typeof NAV_ITEM_RANK | typeof STATIC_PAGE_RANK | typeof SETTINGS_RANK
-  /** navigation_menu_item_id / static_page_id / known-policy index */
+  /**
+   * Editor-arranged "Journal Policies" menu first (its drag-and-drop order),
+   * then other nav items, then static pages, then journal_settings-only
+   * policies — the last three in OJS creation order.
+   */
+  sourceRank: typeof MENU_RANK | typeof NAV_ITEM_RANK | typeof STATIC_PAGE_RANK | typeof SETTINGS_RANK
+  /** menu order key / navigation_menu_item_id / static_page_id / known-policy index */
   id: number
 }
 
@@ -367,6 +381,12 @@ interface PolicyCandidate {
   /** Lower = higher priority when multiple candidates match same policy */
   priority: number
   position: OjsPosition
+  /**
+   * Identity of the OJS page behind the candidate, so the same page reached
+   * twice (menu + standalone, or nav item + static page on one path) is not
+   * mistaken for two pages. Null for journal_settings fallbacks.
+   */
+  pageKey: string | null
 }
 
 /** Titles of parent items that group policies rather than being one. */
@@ -452,7 +472,7 @@ function resolveNavItemContent(item: NavItem, rows: PolicySourceRows): string | 
 function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
   const candidates: PolicyCandidate[] = []
 
-  const pushNavItems = (items: NavItem[], priority: number) => {
+  const pushNavItems = (items: NavItem[], priority: number, positionOf: (item: NavItem) => OjsPosition) => {
     for (const item of items) {
       const sanitized = sanitizePolicy(resolveNavItemContent(item, rows))
       if (!sanitized.trim()) continue
@@ -463,12 +483,23 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
         settingName: null,
         content: sanitized,
         priority,
-        position: { sourceRank: NAV_ITEM_RANK, id: item.id },
+        position: positionOf(item),
+        pageKey: item.path ? `path:${item.path}` : `nav:${item.id}`,
       })
     }
   }
 
-  // SOURCE 1 — "Journal Policies" navigation menu (highest priority)
+  // SOURCE 1 — "Journal Policies" navigation menu (highest priority). Its
+  // assignment order is the editor-controlled tab order.
+  const menuOrder = new Map<number, number>()
+  for (const row of rows.menuRows) {
+    menuOrder.set(
+      row.navigation_menu_item_id,
+      row.parent_seq === null
+        ? row.seq * MENU_CHILD_SLOTS
+        : row.parent_seq * MENU_CHILD_SLOTS + row.seq + 1,
+    )
+  }
   pushNavItems(
     groupNavItems(
       rows.menuRows.map((row) => ({
@@ -481,10 +512,11 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
       })),
     ),
     1,
+    (item) => ({ sourceRank: MENU_RANK, id: menuOrder.get(item.id) ?? 0 }),
   )
 
   // SOURCE 2 — Standalone navigation_menu_items (custom pages + built-ins)
-  pushNavItems(groupNavItems(rows.standaloneNavRows), 2)
+  pushNavItems(groupNavItems(rows.standaloneNavRows), 2, (item) => ({ sourceRank: NAV_ITEM_RANK, id: item.id }))
 
   // SOURCE 3 — journal_settings keys directly
   APPROVED_POLICIES.forEach((policy, index) => {
@@ -499,6 +531,7 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
         content: sanitized,
         priority: 3,
         position: { sourceRank: SETTINGS_RANK, id: index },
+        pageKey: null,
       })
     }
   })
@@ -520,6 +553,7 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
       content: sanitized,
       priority: 4,
       position: { sourceRank: STATIC_PAGE_RANK, id: page.id },
+      pageKey: page.path ? `path:${page.path}` : `static:${page.id}`,
     })
   }
 
@@ -593,16 +627,6 @@ function classifyCandidate(candidate: PolicyCandidate): PolicySlot | null {
 }
 
 /**
- * Identity of the OJS page behind a candidate, so a nav item and a static
- * page sharing one path count as the same page. Settings fallbacks are not
- * pages and return null.
- */
-function ojsPageKey(candidate: PolicyCandidate): string | null {
-  if (candidate.position.sourceRank === SETTINGS_RANK) return null
-  return candidate.path ? `path:${candidate.path}` : `id:${candidate.position.sourceRank}:${candidate.position.id}`
-}
-
-/**
  * Turn raw OJS rows into ordered policy tabs. Pure apart from a warning when
  * distinct OJS pages fold into one tab — so the classification and ordering
  * rules are unit-testable without I/O.
@@ -617,7 +641,7 @@ export function buildPolicyTabs(rows: PolicySourceRows): PolicyTab[] {
     const slot = classifyCandidate(candidate)
     if (!slot) continue
 
-    const pageKey = ojsPageKey(candidate)
+    const { pageKey } = candidate
     const existing = slots.get(slot.slug)
     if (!existing) {
       slots.set(slot.slug, {
@@ -700,12 +724,16 @@ export async function fetchJournalPolicies(ojsJournalId: string): Promise<Journa
           nmi.path  AS slug,
           nmi.type,
           nmia.seq,
+          parent.seq AS parent_seq,
           nmis.setting_name,
           nmis.setting_value,
           nmis.locale
        FROM navigation_menus nm
        JOIN navigation_menu_item_assignments nmia
          ON nm.navigation_menu_id = nmia.navigation_menu_id
+       LEFT JOIN navigation_menu_item_assignments parent
+         ON parent.navigation_menu_id = nmia.navigation_menu_id
+        AND parent.navigation_menu_item_id = nmia.parent_id
        JOIN navigation_menu_items nmi
          ON nmia.navigation_menu_item_id = nmi.navigation_menu_item_id
        LEFT JOIN navigation_menu_item_settings nmis
