@@ -36,9 +36,9 @@
 				<div class="digitopub-footer__column">
 					<h3 class="digitopub-footer__heading">Quick Links</h3>
 					<ul>
-						<li><a href="{url page="journals"}">Browse Journals</a></li>
-						<li><a href="{url page="issue" op="archive"}">Current Issues</a></li>
-						<li><a href="{url page="about"}">About</a></li>
+						<li><a href="https://digitopub.com/journals">Browse Journals</a></li>
+						<li><a href="{url page="submission" op="wizard"}">Submit a Manuscript</a></li>
+						<li><a href="https://digitopub.com/about">About</a></li>
 					</ul>
 				</div>
 
@@ -56,9 +56,9 @@
 				<div class="digitopub-footer__column">
 					<h3 class="digitopub-footer__heading">Contact</h3>
 					<ul>
-						<li><a href="{url page="about"}">Platform Information</a></li>
+						<li><a href="https://digitopub.com/about">Platform Information</a></li>
 						<li><a href="{url page="login"}">Editorial Login</a></li>
-						<li><a href="{url page="search"}">Search Publications</a></li>
+						<li><a href="https://digitopub.com/search">Search Publications</a></li>
 					</ul>
 				</div>
 

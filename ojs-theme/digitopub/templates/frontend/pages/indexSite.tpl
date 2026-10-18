@@ -26,7 +26,7 @@
 		<div class="digitopub-hero__container">
 			<div class="digitopub-hero__content">
 				<h1 id="digitopub-hero-title" class="digitopub-hero__title">Scientific Journals</h1>
-				<p class="digitopub-hero__subtitle">Discover high-quality peer-reviewed journals published on Submit Manager. Browse titles, explore current issues, and find the right home for your research.</p>
+				<p class="digitopub-hero__subtitle">Submit and manage manuscripts for DigitoPub's peer-reviewed journals. Published articles and issues are available on <a href="https://digitopub.com/journals">DigitoPub</a>.</p>
 				<a href="#digitopub-journals" class="digitopub-hero__cta">
 					Browse All Journals
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -99,8 +99,8 @@
 						<div class="digitopub-journals__grid" role="list" id="digitopub-journals-grid">
 							{foreach from=$journals item=journal}
 								{capture assign="journalUrl"}{url journal=$journal->getPath()}{/capture}
-								{capture assign="currentIssueUrl"}{url journal=$journal->getPath() page="issue" op="current"}{/capture}
-								{capture assign="aboutUrl"}{url journal=$journal->getPath() page="about"}{/capture}
+								{capture assign="submitUrl"}{url journal=$journal->getPath() page="submission" op="wizard"}{/capture}
+								{capture assign="digitopubJournalUrl"}https://digitopub.com/journals/{$journal->getPath()|escape:"url"}{/capture}
 								{assign var="cover" value=$journal->getLocalizedData('homepageImage')}
 								{assign var="issn" value=$journal->getData('issn')}
 								{assign var="onlineIssn" value=$journal->getData('onlineIssn')}
@@ -129,9 +129,8 @@
 										</h3>
 									</div>
 									<div class="digitopub-card__actions">
-										<a href="{$aboutUrl}" class="digitopub-btn digitopub-btn--outline digitopub-btn--sm digitopub-btn--block">About Journal</a>
-										<a href="{$currentIssueUrl}" class="digitopub-btn digitopub-btn--outline digitopub-btn--sm digitopub-btn--block">Current Issue</a>
-										<a href="{$journalUrl}" class="digitopub-btn digitopub-btn--primary digitopub-btn--sm digitopub-btn--block">View Journal</a>
+										<a href="{$submitUrl}" class="digitopub-btn digitopub-btn--primary digitopub-btn--sm digitopub-btn--block">Submit Manuscript</a>
+										<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--outline digitopub-btn--sm digitopub-btn--block">View on DigitoPub</a>
 									</div>
 								</article>
 							{/foreach}
@@ -174,13 +173,6 @@
 								<div class="digitopub-services__text">
 									<strong class="digitopub-services__title">Journal Metrics</strong>
 									<span class="digitopub-services__desc">View journal metrics and indexing.</span>
-								</div>
-							</li>
-							<li class="digitopub-services__item">
-								<span class="digitopub-services__icon" aria-hidden="true">📚</span>
-								<div class="digitopub-services__text">
-									<strong class="digitopub-services__title">Current Issues</strong>
-									<span class="digitopub-services__desc">Browse the latest published issues.</span>
 								</div>
 							</li>
 							<li class="digitopub-services__item">

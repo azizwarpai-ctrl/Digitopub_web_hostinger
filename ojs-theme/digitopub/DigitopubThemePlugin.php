@@ -20,6 +20,9 @@ use PKP\plugins\ThemePlugin;
 
 class DigitopubThemePlugin extends ThemePlugin
 {
+    /** DigitoPub is the single publishing surface; SubmitManager is submission-only (#183). */
+    public const DIGITOPUB_BASE_URL = 'https://digitopub.com';
+
     /**
      * @copydoc Plugin::register()
      */
@@ -55,6 +58,46 @@ class DigitopubThemePlugin extends ThemePlugin
         // Make the site logo available in every frontend template so the
         // navbar brand is consistent regardless of journal context.
         Hook::add('TemplateManager::display', [$this, 'loadTemplateData']);
+
+        // #183: issue pages are published on DigitoPub only. Other reader
+        // pages are redirected by .htaccess (ojs-theme/htaccess/
+        // submission-only.conf); issue/view needs the issue's volume/number,
+        // so it is redirected here once the handler has loaded the issue.
+        Hook::add('TemplateManager::display', [$this, 'redirectIssuePage']);
+    }
+
+    /**
+     * 301 a published issue's OJS page to its DigitoPub issue page
+     * (/journals/{path}/issues/{volume}/{number}), or to the journal archive
+     * when the issue has no volume/number. Unpublished issues are left alone
+     * so editors can still preview them from the workflow.
+     *
+     * @param string $hookName
+     * @param array $args [$templateMgr, &$template, &$output]
+     */
+    public function redirectIssuePage($hookName, $args)
+    {
+        if ($args[1] !== 'frontend/pages/issue.tpl') {
+            return false;
+        }
+
+        /** @var TemplateManager $templateMgr */
+        $templateMgr = $args[0];
+        $issue = $templateMgr->getTemplateVars('issue');
+        $journal = Application::get()->getRequest()->getContext();
+        if (!$issue || !$journal || !$issue->getPublished()) {
+            return false;
+        }
+
+        $journalUrl = self::DIGITOPUB_BASE_URL . '/journals/' . rawurlencode($journal->getPath());
+        $volume = (string) $issue->getVolume();
+        $number = (string) $issue->getNumber();
+        $target = ($volume !== '' && $number !== '')
+            ? $journalUrl . '/issues/' . rawurlencode($volume) . '/' . rawurlencode($number)
+            : $journalUrl . '/archive';
+
+        header('Location: ' . $target, true, 301);
+        exit;
     }
 
     /**

@@ -45,9 +45,9 @@
 			<span class="digitopub-navbar__brand-text">Submit Manager</span>
 		</a>
 
-		<form class="digitopub-navbar__search" method="get" action="{url page="search"}" role="search" aria-label="{translate|escape key="common.search"}">
+		<form class="digitopub-navbar__search" method="get" action="https://digitopub.com/search" role="search" aria-label="{translate|escape key="common.search"}">
 			<label for="digitopub-search-query" class="pkp_screen_reader">{translate key="common.search"}</label>
-			<input type="search" id="digitopub-search-query" name="query" class="digitopub-navbar__search-input" placeholder="Search journals..." value="{if $query}{$query|escape}{/if}">
+			<input type="search" id="digitopub-search-query" name="q" class="digitopub-navbar__search-input" placeholder="Search articles on DigitoPub...">
 			<button type="submit" class="digitopub-navbar__search-button" aria-label="{translate|escape key="common.search"}">
 				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
 			</button>
@@ -82,9 +82,9 @@
 	</div>
 
 	<div class="digitopub-navbar__mobile" id="digitopub-navbar-mobile">
-		<form class="digitopub-navbar__search digitopub-navbar__search--mobile" method="get" action="{url page="search"}" role="search" aria-label="{translate|escape key="common.search"}">
+		<form class="digitopub-navbar__search digitopub-navbar__search--mobile" method="get" action="https://digitopub.com/search" role="search" aria-label="{translate|escape key="common.search"}">
 			<label for="digitopub-search-query-mobile" class="pkp_screen_reader">{translate key="common.search"}</label>
-			<input type="search" id="digitopub-search-query-mobile" name="query" class="digitopub-navbar__search-input" placeholder="Search journals...">
+			<input type="search" id="digitopub-search-query-mobile" name="q" class="digitopub-navbar__search-input" placeholder="Search articles on DigitoPub...">
 			<button type="submit" class="digitopub-navbar__search-button" aria-label="{translate|escape key="common.search"}">
 				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
 			</button>
