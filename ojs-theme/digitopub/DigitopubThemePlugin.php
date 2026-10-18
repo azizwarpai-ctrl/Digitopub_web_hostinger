@@ -66,9 +66,19 @@ class DigitopubThemePlugin extends ThemePlugin
         // The parent's Noto Sans webfont is no longer used.
         $this->removeStyle('font');
 
+        // SiteGround's proxy caches the cookie-less css?name=<style> responses
+        // indefinitely (no purge available), so every release must produce
+        // new stylesheet URLs (D7). Re-key the parent's stylesheet (after the
+        // D6 variables above) and name ours with the same content version.
+        $version = $this->assetVersion();
+        if (isset($this->parent->styles['stylesheet'])) {
+            $this->parent->styles['stylesheet-' . $version] = $this->parent->styles['stylesheet'];
+            unset($this->parent->styles['stylesheet']);
+        }
+
         // Load DigitoPub custom styles and scripts for the global redesign.
-        $this->addStyle('digitopub-styles-v10', 'styles/digitopub.less');
-        $this->addScript('digitopub-scripts', 'js/digitopub.js');
+        $this->addStyle('digitopub-styles-' . $version, 'styles/digitopub.less');
+        $this->addScript('digitopub-scripts', 'js/digitopub.js?v=' . $version);
 
         // Make the site logo available in every frontend template so the
         // navbar brand is consistent regardless of journal context.
@@ -113,6 +123,27 @@ class DigitopubThemePlugin extends ThemePlugin
 
         header('Location: ' . $target, true, 301);
         exit;
+    }
+
+    /**
+     * Short content version of the theme's assets: changes whenever any
+     * stylesheet, the script or this plugin file changes (each deploy writes
+     * new files, so their mtimes change). Only stat() calls, no file reads.
+     */
+    public function assetVersion(): string
+    {
+        $parts = [filemtime(__FILE__) . ':' . filesize(__FILE__)];
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(__DIR__ . '/styles', \FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($files as $file) {
+            $parts[] = $file->getPathname() . ':' . $file->getMTime() . ':' . $file->getSize();
+        }
+        $script = __DIR__ . '/js/digitopub.js';
+        $parts[] = filemtime($script) . ':' . filesize($script);
+        sort($parts);
+
+        return substr(md5(implode('|', $parts)), 0, 8);
     }
 
     /**

@@ -198,6 +198,32 @@ describe("button labels survive the base link colour", () => {
   })
 })
 
+describe("stylesheet URLs change every release (D7)", () => {
+  // SiteGround's proxy caches the cookie-less css?name=<style> responses
+  // indefinitely; a fixed name served July 2026 CSS until this fix.
+  const php = () => read(path.join(THEME, "DigitopubThemePlugin.php"))
+
+  it("registers the theme bundle under a content-versioned name", () => {
+    expect(php()).not.toMatch(/'digitopub-styles-v\d+'/)
+    expect(php()).toMatch(/addStyle\(\s*'digitopub-styles-'\s*\.\s*\$\w+/)
+  })
+
+  it("derives the version from the stylesheet files and the plugin itself", () => {
+    expect(php()).toMatch(/function\s+assetVersion\s*\(/)
+    expect(php()).toMatch(/filemtime/)
+    expect(php()).toMatch(/__FILE__/)
+  })
+
+  it("re-keys the parent stylesheet after the D6 variables are applied", () => {
+    const src = php()
+    const modify = src.indexOf("modifyStyle('stylesheet'")
+    const rekey = src.search(/->styles\['stylesheet-'\s*\.\s*\$\w+\]\s*=/)
+    expect(modify).toBeGreaterThan(-1)
+    expect(rekey).toBeGreaterThan(modify)
+    expect(src).toMatch(/unset\(\s*\$this->parent->styles\['stylesheet'\]\s*\)/)
+  })
+})
+
 describe("parent default theme is re-skinned at the LESS-variable source (D6)", () => {
   const php = () => read(path.join(THEME, "DigitopubThemePlugin.php"))
 
