@@ -4,7 +4,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitle="user.register"}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-auth-layout.css?v=5" type="text/css">
 
 {assign var="siteContextId" value=PKP\core\PKPApplication::SITE_CONTEXT_ID|intval}
 

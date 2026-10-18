@@ -3,7 +3,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitle="common.search"}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-search-layout.css?v=3" type="text/css">
 
 {if !$heading}
 	{assign var="heading" value="h2"}

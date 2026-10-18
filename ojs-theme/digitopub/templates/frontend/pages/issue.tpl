@@ -10,7 +10,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitleTranslated=$issueIdentification}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-issue-layout.css?v=2" type="text/css">
 
 <div class="page page_issue digitopub-issue-page">
 

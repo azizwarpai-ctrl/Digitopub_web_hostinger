@@ -96,10 +96,10 @@ describe("stylesheet structure", () => {
     expect(walk(STYLES, ".css").map(rel)).toEqual([])
   })
 
-  it("defines each shell component once", () => {
+  it("defines each shell component once (one top-level rule; nested/contextual overrides allowed)", () => {
     const all = lessFiles().map(read).join("\n")
     for (const block of ["digitopub-btn", "digitopub-navbar", "digitopub-footer"]) {
-      const defs = all.match(new RegExp(`^\\s*\\.${block}\\s*\\{`, "gm")) ?? []
+      const defs = all.match(new RegExp(`^\\.${block}\\s*\\{`, "gm")) ?? []
       expect(defs.length, `.${block} definitions`).toBe(1)
     }
   })

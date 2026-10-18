@@ -4,7 +4,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitle="user.login.resetPassword"}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-auth-layout.css?v=5" type="text/css">
 
 <div class="page page_lost_password digitopub-auth-page">
 	<div class="digitopub-auth-layout">
