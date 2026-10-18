@@ -5,10 +5,9 @@ import {
   isValidPolicySlug,
   getPolicyTitleBySlug,
   APPROVED_POLICY_SLUGS,
-  isPolicySlugShape,
   slugifyPolicyPath,
-  resolvePolicyRoute,
 } from "@/src/features/journals/server/journal-policies-service"
+import { isPolicySlugShape, resolvePolicyRoute } from "@/src/features/journals/policy-slugs"
 
 describe("normalizePolicyKey", () => {
   it("lowercases and trims", () => {
@@ -201,24 +200,32 @@ describe("resolvePolicyRoute", () => {
     { slug: "repository-policy", title: "Repository Policy (Self-Archiving Policy)" },
   ]
 
-  it("uses the fetched OJS title for a dynamic slug", () => {
-    expect(resolvePolicyRoute("repository-policy", tabs)).toEqual({
+  const loadTabs = async () => tabs
+
+  it("uses the fetched OJS title for a dynamic slug", async () => {
+    expect(await resolvePolicyRoute("repository-policy", loadTabs)).toEqual({
       found: true,
       title: "Repository Policy (Self-Archiving Policy)",
     })
   })
 
-  it("is not found when OJS returned tabs and the slug is absent", () => {
-    expect(resolvePolicyRoute("no-such-policy", tabs)).toEqual({ found: false })
+  it("is not found when OJS returned tabs and the slug is absent", async () => {
+    expect(await resolvePolicyRoute("no-such-policy", loadTabs)).toEqual({ found: false })
   })
 
-  it("keeps known slugs resolvable even when the journal lacks that tab", () => {
-    expect(resolvePolicyRoute("dois-orcid", tabs)).toEqual({ found: true, title: "DOIs & ORCID" })
+  it("keeps known slugs resolvable without loading tabs", async () => {
+    let loaded = false
+    const result = await resolvePolicyRoute("dois-orcid", async () => {
+      loaded = true
+      return tabs
+    })
+    expect(result).toEqual({ found: true, title: "DOIs & ORCID" })
+    expect(loaded).toBe(false)
   })
 
-  it("does not 404 when OJS is unavailable (no tabs)", () => {
-    expect(resolvePolicyRoute("repository-policy", null)).toEqual({ found: true, title: null })
-    expect(resolvePolicyRoute("repository-policy", [])).toEqual({ found: true, title: null })
+  it("does not 404 when OJS is unavailable (no tabs)", async () => {
+    expect(await resolvePolicyRoute("repository-policy", async () => null)).toEqual({ found: true, title: null })
+    expect(await resolvePolicyRoute("repository-policy", async () => [])).toEqual({ found: true, title: null })
   })
 })
 

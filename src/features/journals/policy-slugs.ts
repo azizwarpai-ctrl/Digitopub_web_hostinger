@@ -1,17 +1,19 @@
 /**
- * Known policy tab metadata — client- and server-safe.
+ * Policy tab URL metadata — client- and server-safe.
  *
- * These are the policies with canonical slugs/titles. Additional policies are
- * discovered dynamically from OJS (#182) and use a slug derived from their
- * OJS path — see `isPolicySlugShape` / `slugifyPolicyPath`.
+ * Holds the KNOWN policies (canonical slug + title pairs) plus the URL-facing
+ * helpers the route needs. Additional policies are discovered dynamically
+ * from OJS (#182); their slugs are derived server-side from the OJS path
+ * (`slugifyPolicyPath` in `server/journal-policies-service.ts`), so the route
+ * can only check a slug's shape and must ask the fetched tabs whether it
+ * exists (`resolvePolicyRoute`).
  *
- * The full whitelist (with OJS aliases, journal_settings keys, built-in nav
- * menu types, etc.) lives in `server/journal-policies-service.ts`. This file
- * exports ONLY the URL-facing slug + title pairs so the client bundle never
- * has to pull in the OJS / mysql2 modules just to validate a URL segment.
+ * The full known-policy table (OJS aliases, journal_settings keys, built-in
+ * nav menu types, etc.) lives in `server/journal-policies-service.ts`. Nothing
+ * here imports the OJS / mysql2 modules, so the client bundle stays clean.
  *
  * `journal-policies-service.ts` imports from THIS file to build its rich list
- * — making this the single source of truth for slug/title pairs.
+ * — making this the single source of truth for known slug/title pairs.
  */
 
 export interface PolicyMeta {
@@ -39,7 +41,7 @@ export function isValidPolicySlug(slug: string | null | undefined): boolean {
 }
 
 const POLICY_SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const MAX_POLICY_SLUG_LENGTH = 80
+export const MAX_POLICY_SLUG_LENGTH = 80
 
 /**
  * True when `slug` is a well-formed policy URL segment (lowercase kebab-case,
@@ -52,33 +54,23 @@ export function isPolicySlugShape(slug: string | null | undefined): boolean {
   return POLICY_SLUG_SHAPE.test(slug)
 }
 
-/** Kebab-case an OJS path or title into a policy slug ("" when nothing usable remains). */
-export function slugifyPolicyPath(value: string | null | undefined): string {
-  if (!value) return ""
-  return value
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, MAX_POLICY_SLUG_LENGTH)
-    .replace(/-+$/, "")
-}
+export type PolicyRouteResolution = { found: true; title: string | null } | { found: false }
 
 /**
- * Decide whether `/policies/{slug}` exists and what to title it, given the
- * tabs fetched from OJS (`null`/empty when OJS was unavailable).
+ * Decide whether `/policies/{slug}` exists and what to title it.
  *
- * - Known slugs always resolve (canonical title) — matches prior behavior.
- * - Dynamic slugs take their title from the fetched tab.
- * - A 404 is only signalled when OJS actually returned tabs and the slug is
- *   not among them; an OJS outage never turns a valid link into a 404.
+ * - Known slugs always resolve (canonical title) without calling `loadTabs`.
+ * - Dynamic slugs take their title from the tabs `loadTabs` fetches from OJS.
+ * - Not-found is only signalled when OJS actually returned tabs and the slug
+ *   is not among them; an OJS outage (`null`/empty) never 404s a valid link.
  */
-export function resolvePolicyRoute(
+export async function resolvePolicyRoute(
   slug: string,
-  tabs: ReadonlyArray<{ slug: string; title: string }> | null,
-): { found: true; title: string | null } | { found: false } {
+  loadTabs: () => Promise<ReadonlyArray<{ slug: string; title: string }> | null>,
+): Promise<PolicyRouteResolution> {
   const knownTitle = getPolicyTitleBySlug(slug)
   if (knownTitle) return { found: true, title: knownTitle }
+  const tabs = await loadTabs()
   if (!tabs || tabs.length === 0) return { found: true, title: null }
   const tab = tabs.find((t) => t.slug === slug)
   return tab ? { found: true, title: tab.title } : { found: false }

@@ -23,14 +23,11 @@
 import sanitizeHtml from "sanitize-html"
 import { getJournalPrimaryLocale, ojsQuery } from "@/src/features/ojs/server/ojs-client"
 import { rewriteOjsInlineImages } from "@/src/features/ojs/utils/rewrite-inline-images"
-import { POLICY_METADATA, slugifyPolicyPath } from "@/src/features/journals/policy-slugs"
+import { MAX_POLICY_SLUG_LENGTH, POLICY_METADATA } from "@/src/features/journals/policy-slugs"
 
 export {
   APPROVED_POLICY_SLUGS,
   isValidPolicySlug,
-  isPolicySlugShape,
-  slugifyPolicyPath,
-  resolvePolicyRoute,
   getPolicyTitleBySlug,
 } from "@/src/features/journals/policy-slugs"
 
@@ -50,7 +47,7 @@ export interface JournalPolicies {
   requireAuthorCompetingInterestsEnabled: boolean
 }
 
-// ── Internal row types ──────────────────────────────────────────────────────
+// ── OJS row types (exported for buildPolicyTabs callers and tests) ──────────
 
 export interface SettingRow {
   setting_name: string
@@ -96,13 +93,14 @@ export interface PolicySourceRows {
   staticPageRows: StaticPageRow[]
 }
 
-// ── Approved policy whitelist ───────────────────────────────────────────────
+// ── Known policies ──────────────────────────────────────────────────────────
 //
-// The ONLY tabs that may appear in the Policies section. Each entry lists the
-// aliases (normalized) that may appear in OJS as a title, slug, path, or
-// journal_settings key. Matching is deliberately permissive so different OJS
-// deployments can use their own wording, but nothing outside this list is
-// ever emitted.
+// Policies with a canonical slug + title. Each entry lists the aliases
+// (normalized) that may appear in OJS as a title, slug, path, or
+// journal_settings key, so differently-worded OJS pages still land on the
+// canonical tab (and its stable deep link). This is NOT an exclusive filter:
+// any other OJS page whose title/path mentions "policy" is emitted as a
+// dynamic tab (see `classifyCandidate`).
 
 interface ApprovedPolicy {
   /** Canonical tab title shown to end-users */
@@ -338,85 +336,106 @@ function pickBestLocale(
 
 // ── Candidate collection ────────────────────────────────────────────────────
 //
-// A candidate is a piece of content + identifying keys (title, slug, path,
-// type, settingName) + an OJS creation-order key. Candidates are classified
-// into tab slots (known or dynamic policy); non-policies are discarded. When
-// several candidates land in the same slot, the lowest `priority` supplies
-// the content and the lowest `order` positions the tab.
+// A candidate is a piece of content + identifying keys (title, path, type,
+// settingName) + its position in OJS. Candidates are classified into tab
+// slots (known or dynamic policy); non-policies are discarded. When several
+// candidates land in the same slot, the lowest `priority` supplies the
+// content and the earliest `position` places the tab.
+
+const NAV_ITEM_RANK = 0
+const STATIC_PAGE_RANK = 1
+const SETTINGS_RANK = 2
+
+/** A candidate's place in OJS creation order — compared by rank, then id. */
+interface OjsPosition {
+  /** Nav items, then static pages, then journal_settings-only policies */
+  sourceRank: typeof NAV_ITEM_RANK | typeof STATIC_PAGE_RANK | typeof SETTINGS_RANK
+  /** navigation_menu_item_id / static_page_id / known-policy index */
+  id: number
+}
+
+function comparePositions(a: OjsPosition, b: OjsPosition): number {
+  return a.sourceRank - b.sourceRank || a.id - b.id
+}
 
 interface PolicyCandidate {
   titleHint: string | null
-  slug: string | null
   path: string | null
   type: string | null
   settingName: string | null
   content: string
   /** Lower = higher priority when multiple candidates match same policy */
   priority: number
-  /** OJS creation-order key — lower sorts first */
-  order: number
+  position: OjsPosition
 }
 
-/** Static pages sort after every nav item. */
-const STATIC_PAGE_ORDER_BASE = 1_000_000_000
-/** journal_settings-only policies sort last, in known-policy order. */
-const SETTINGS_ORDER_BASE = 2_000_000_000
-
-/** Parent/container items that group policies rather than being one. */
+/** Titles of parent items that group policies rather than being one. */
 const POLICY_CONTAINER_KEYS = new Set(["policy", "policies", "journal policies", "journal policy"])
 
-type LocalizedSetting = { setting_name: string; setting_value: string | null; locale: string }
+/** An OJS entity (nav item / static page) with its localized settings rows. */
+interface WithSettings {
+  settings: SettingRow[]
+}
 
-interface NavItem {
+interface NavItem extends WithSettings {
   id: number
   path: string | null
   type: string
-  settings: LocalizedSetting[]
 }
 
-function groupNavItems(
-  rows: ReadonlyArray<{
-    navigation_menu_item_id: number
-    path: string | null
-    type: string
-    setting_name: string | null
-    setting_value: string | null
-    locale: string
-  }>,
-): NavItem[] {
-  const items = new Map<number, NavItem>()
+interface StaticPage extends WithSettings {
+  id: number
+  path: string
+}
+
+/** Collapse LEFT-JOINed entity + settings rows into one record per entity. */
+function groupWithSettings<
+  R extends { setting_name: string | null; setting_value: string | null; locale: string },
+  G extends WithSettings,
+>(rows: readonly R[], keyOf: (row: R) => number, create: (row: R) => G): G[] {
+  const groups = new Map<number, G>()
   for (const row of rows) {
-    let item = items.get(row.navigation_menu_item_id)
-    if (!item) {
-      item = { id: row.navigation_menu_item_id, path: row.path || null, type: row.type || "", settings: [] }
-      items.set(row.navigation_menu_item_id, item)
+    let group = groups.get(keyOf(row))
+    if (!group) {
+      group = create(row)
+      groups.set(keyOf(row), group)
     }
     if (row.setting_name) {
-      item.settings.push({
+      group.settings.push({
         setting_name: row.setting_name,
         setting_value: row.setting_value,
         locale: row.locale,
       })
     }
   }
-  return Array.from(items.values())
+  return Array.from(groups.values())
+}
+
+function groupNavItems(rows: readonly StandaloneNavRow[]): NavItem[] {
+  return groupWithSettings(
+    rows,
+    (row) => row.navigation_menu_item_id,
+    (row) => ({ id: row.navigation_menu_item_id, path: row.path || null, type: row.type || "", settings: [] }),
+  )
+}
+
+/** Known policy behind an OJS built-in nav item type (e.g. NMI_TYPE_PRIVACY). */
+function findPolicyByBuiltinType(type: string | null): ApprovedPolicy | undefined {
+  if (!type) return undefined
+  return APPROVED_POLICIES.find((p) => p.builtinTypes.includes(type))
 }
 
 /**
  * Resolve a nav item's HTML: its own content, else the journal_settings
- * field behind a built-in type (e.g. NMI_TYPE_PRIVACY), else a static page
- * sharing its path.
+ * field behind a built-in type, else a static page sharing its path.
  */
 function resolveNavItemContent(item: NavItem, rows: PolicySourceRows): string | null {
   let content = pickBestLocale(item.settings, "content", rows.primaryLocale)
 
   if (!content) {
-    const policyByType = APPROVED_POLICIES.find((p) => p.builtinTypes.includes(item.type))
-    if (policyByType) {
-      for (const settingName of policyByType.settingNames) {
-        content = pickBestLocale(rows.policySettingRows, settingName, rows.primaryLocale)
-        if (content) break
-      }
+    for (const settingName of findPolicyByBuiltinType(item.type)?.settingNames ?? []) {
+      content = pickBestLocale(rows.policySettingRows, settingName, rows.primaryLocale)
+      if (content) break
     }
   }
 
@@ -433,28 +452,39 @@ function resolveNavItemContent(item: NavItem, rows: PolicySourceRows): string | 
 function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
   const candidates: PolicyCandidate[] = []
 
-  const pushNavItems = (items: NavItem[], priority: number, pathAsSlug: boolean) => {
+  const pushNavItems = (items: NavItem[], priority: number) => {
     for (const item of items) {
       const sanitized = sanitizePolicy(resolveNavItemContent(item, rows))
       if (!sanitized.trim()) continue
       candidates.push({
         titleHint: pickBestLocale(item.settings, "title", rows.primaryLocale),
-        slug: pathAsSlug ? item.path : null,
-        path: pathAsSlug ? null : item.path,
+        path: item.path,
         type: item.type || null,
         settingName: null,
         content: sanitized,
         priority,
-        order: item.id,
+        position: { sourceRank: NAV_ITEM_RANK, id: item.id },
       })
     }
   }
 
   // SOURCE 1 — "Journal Policies" navigation menu (highest priority)
-  pushNavItems(groupNavItems(rows.menuRows.map((r) => ({ ...r, path: r.slug }))), 1, true)
+  pushNavItems(
+    groupNavItems(
+      rows.menuRows.map((row) => ({
+        navigation_menu_item_id: row.navigation_menu_item_id,
+        path: row.slug,
+        type: row.type,
+        setting_name: row.setting_name,
+        setting_value: row.setting_value,
+        locale: row.locale,
+      })),
+    ),
+    1,
+  )
 
   // SOURCE 2 — Standalone navigation_menu_items (custom pages + built-ins)
-  pushNavItems(groupNavItems(rows.standaloneNavRows), 2, false)
+  pushNavItems(groupNavItems(rows.standaloneNavRows), 2)
 
   // SOURCE 3 — journal_settings keys directly
   APPROVED_POLICIES.forEach((policy, index) => {
@@ -463,43 +493,33 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
       if (!sanitized.trim()) continue
       candidates.push({
         titleHint: null,
-        slug: null,
         path: null,
         type: null,
         settingName,
         content: sanitized,
         priority: 3,
-        order: SETTINGS_ORDER_BASE + index,
+        position: { sourceRank: SETTINGS_RANK, id: index },
       })
     }
   })
 
   // SOURCE 4 — static_pages
-  const staticPages = new Map<number, { path: string; settings: LocalizedSetting[] }>()
-  for (const row of rows.staticPageRows) {
-    if (!staticPages.has(row.static_page_id)) {
-      staticPages.set(row.static_page_id, { path: row.path, settings: [] })
-    }
-    if (row.setting_name) {
-      staticPages.get(row.static_page_id)!.settings.push({
-        setting_name: row.setting_name,
-        setting_value: row.setting_value,
-        locale: row.locale,
-      })
-    }
-  }
-  for (const [id, page] of staticPages) {
+  const staticPages = groupWithSettings<StaticPageRow, StaticPage>(
+    rows.staticPageRows,
+    (row) => row.static_page_id,
+    (row) => ({ id: row.static_page_id, path: row.path, settings: [] }),
+  )
+  for (const page of staticPages) {
     const sanitized = sanitizePolicy(pickBestLocale(page.settings, "content", rows.primaryLocale))
     if (!sanitized.trim()) continue
     candidates.push({
       titleHint: pickBestLocale(page.settings, "title", rows.primaryLocale),
-      slug: null,
       path: page.path || null,
       type: null,
       settingName: null,
       content: sanitized,
       priority: 4,
-      order: STATIC_PAGE_ORDER_BASE + id,
+      position: { sourceRank: STATIC_PAGE_RANK, id: page.id },
     })
   }
 
@@ -511,8 +531,20 @@ function collectCandidates(rows: PolicySourceRows): PolicyCandidate[] {
 interface PolicySlot {
   slug: string
   title: string
-  /** Tie-break when two slots share an order key */
+  /** Tie-break when two slots share a position */
   knownIndex: number
+}
+
+/** Kebab-case an OJS path or title into a policy slug ("" when nothing usable remains). */
+export function slugifyPolicyPath(value: string | null | undefined): string {
+  if (!value) return ""
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_POLICY_SLUG_LENGTH)
+    .replace(/-+$/, "")
 }
 
 function mentionsPolicy(value: string | null): boolean {
@@ -521,10 +553,14 @@ function mentionsPolicy(value: string | null): boolean {
   return key.split(" ").some((token) => token === "policy" || token === "policies")
 }
 
+/**
+ * A container groups policies ("Journal Policies"). Judged by title so a real
+ * policy that merely lives at path `policies` is kept; untitled items fall
+ * back to their path.
+ */
 function isPolicyContainer(candidate: PolicyCandidate): boolean {
-  return [candidate.titleHint, candidate.slug, candidate.path].some((v) =>
-    POLICY_CONTAINER_KEYS.has(normalizePolicyKey(v)),
-  )
+  const title = normalizePolicyKey(candidate.titleHint)
+  return POLICY_CONTAINER_KEYS.has(title || normalizePolicyKey(candidate.path))
 }
 
 function humanizeSlug(slug: string): string {
@@ -537,20 +573,16 @@ function humanizeSlug(slug: string): string {
 function classifyCandidate(candidate: PolicyCandidate): PolicySlot | null {
   if (isPolicyContainer(candidate)) return null
 
-  const byType = candidate.type
-    ? APPROVED_POLICIES.find((p) => p.builtinTypes.includes(candidate.type!))
-    : undefined
   const known =
-    byType ??
-    matchApprovedPolicy([candidate.titleHint, candidate.slug, candidate.path, candidate.settingName])
+    findPolicyByBuiltinType(candidate.type) ??
+    matchApprovedPolicy([candidate.titleHint, candidate.path, candidate.settingName])
   if (known) {
     return { slug: known.slug, title: known.title, knownIndex: APPROVED_POLICIES.indexOf(known) }
   }
 
-  const pathOrSlug = candidate.path ?? candidate.slug
-  if (!mentionsPolicy(candidate.titleHint) && !mentionsPolicy(pathOrSlug)) return null
+  if (!mentionsPolicy(candidate.titleHint) && !mentionsPolicy(candidate.path)) return null
 
-  const slug = slugifyPolicyPath(pathOrSlug) || slugifyPolicyPath(candidate.titleHint)
+  const slug = slugifyPolicyPath(candidate.path) || slugifyPolicyPath(candidate.titleHint)
   if (!slug) return null
 
   return {
@@ -561,30 +593,62 @@ function classifyCandidate(candidate: PolicyCandidate): PolicySlot | null {
 }
 
 /**
- * Turn raw OJS rows into ordered policy tabs. Pure — no I/O — so the
- * classification and ordering rules are unit-testable.
+ * Identity of the OJS page behind a candidate, so a nav item and a static
+ * page sharing one path count as the same page. Settings fallbacks are not
+ * pages and return null.
+ */
+function ojsPageKey(candidate: PolicyCandidate): string | null {
+  if (candidate.position.sourceRank === SETTINGS_RANK) return null
+  return candidate.path ? `path:${candidate.path}` : `id:${candidate.position.sourceRank}:${candidate.position.id}`
+}
+
+/**
+ * Turn raw OJS rows into ordered policy tabs. Pure apart from a warning when
+ * distinct OJS pages fold into one tab — so the classification and ordering
+ * rules are unit-testable without I/O.
  */
 export function buildPolicyTabs(rows: PolicySourceRows): PolicyTab[] {
-  const slots = new Map<string, { slot: PolicySlot; content: string; priority: number; order: number }>()
+  const slots = new Map<
+    string,
+    { slot: PolicySlot; content: string; priority: number; position: OjsPosition; pages: Set<string> }
+  >()
 
   for (const candidate of collectCandidates(rows)) {
     const slot = classifyCandidate(candidate)
     if (!slot) continue
 
+    const pageKey = ojsPageKey(candidate)
     const existing = slots.get(slot.slug)
     if (!existing) {
-      slots.set(slot.slug, { slot, content: candidate.content, priority: candidate.priority, order: candidate.order })
+      slots.set(slot.slug, {
+        slot,
+        content: candidate.content,
+        priority: candidate.priority,
+        position: candidate.position,
+        pages: new Set(pageKey ? [pageKey] : []),
+      })
       continue
     }
+    if (pageKey) existing.pages.add(pageKey)
     if (candidate.priority < existing.priority) {
       existing.content = candidate.content
       existing.priority = candidate.priority
     }
-    existing.order = Math.min(existing.order, candidate.order)
+    if (comparePositions(candidate.position, existing.position) < 0) {
+      existing.position = candidate.position
+    }
+  }
+
+  for (const { slot, pages } of slots.values()) {
+    if (pages.size > 1) {
+      console.warn(
+        `[JournalPolicies] ${pages.size} OJS pages map to "${slot.title}" (${Array.from(pages).join(", ")}); only the highest-priority one is shown.`,
+      )
+    }
   }
 
   return Array.from(slots.values())
-    .sort((a, b) => a.order - b.order || a.slot.knownIndex - b.slot.knownIndex)
+    .sort((a, b) => comparePositions(a.position, b.position) || a.slot.knownIndex - b.slot.knownIndex)
     .map(({ slot, content }) => ({ title: slot.title, slug: slot.slug, content }))
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
   buildPolicyTabs,
   type PolicySourceRows,
@@ -101,6 +101,41 @@ describe("buildPolicyTabs — dynamic OJS policies (#182)", () => {
     rows.standaloneNavRows.push(...navItem(500, "journal-policies", "Journal Policies", "<p>See tabs</p>"))
     const slugs = buildPolicyTabs(rows).map((t) => t.slug)
     expect(slugs).not.toContain("journal-policies")
+  })
+
+  it("keeps a real policy whose path happens to be 'policies' (only container titles are excluded)", () => {
+    const rows = ojbrRows()
+    rows.standaloneNavRows = rows.standaloneNavRows.filter((r) => r.navigation_menu_item_id !== 42)
+    rows.standaloneNavRows.push(...navItem(42, "policies", "Data Availability Policy", "<p>Data body</p>"))
+    const tab = buildPolicyTabs(rows).find((t) => t.content.includes("Data body"))
+    expect(tab?.slug).toBe("policies")
+    expect(tab?.title).toBe("Data Availability Policy")
+  })
+
+  it("excludes an item titled 'Journal Policies' whatever its path", () => {
+    const rows = ojbrRows()
+    rows.standaloneNavRows.push(...navItem(501, "jp", "Journal Policies", "<p>Container</p>"))
+    expect(buildPolicyTabs(rows).map((t) => t.slug)).not.toContain("jp")
+  })
+
+  it("warns when two different OJS pages map to the same known policy", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const rows = ojbrRows()
+    rows.standaloneNavRows.push(...navItem(600, "peer-review-policy", "Peer Review Policy", "<p>Peer body</p>"))
+    const workflow = buildPolicyTabs(rows).filter((t) => t.slug === "editorial-workflow")
+    expect(workflow).toHaveLength(1)
+    expect(workflow[0].content).toContain("Workflow body")
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Editorial Workflow"'))
+    warn.mockRestore()
+  })
+
+  it("does not warn when a nav page and its settings fallback both supply a known policy", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const rows = ojbrRows()
+    rows.policySettingRows.push({ setting_name: "copyrightNotice", setting_value: "<p>Notice</p>", locale: "en" })
+    buildPolicyTabs(rows)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it("keeps canonical slug and title for known policies when the OJS path differs", () => {
