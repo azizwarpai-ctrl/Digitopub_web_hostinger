@@ -3,7 +3,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitle="about.aboutContext"}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-about-layout.css?v=2" type="text/css">
 
 <div class="page page_about digitopub-about-page">
 	<div class="digitopub-container">

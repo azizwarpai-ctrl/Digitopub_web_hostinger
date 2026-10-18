@@ -45,3 +45,6 @@ check_env.ts
 e2e/.auth/
 e2e/.results/
 playwright-report/
+
+# smart-task-router working state (local only)
+.router/

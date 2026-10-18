@@ -1,0 +1,111 @@
+// ── Design tokens ────────────────────────────────────────────────────────────
+//
+// SubmitManager shares DigitoPub's design system. Values mirror app/globals.css
+// in the DigitoPub repo exactly (enforced by
+// tests/unit/ojs-theme-design-system-guard.test.ts). These are the only
+// literal colours in the theme; everything else references a token.
+//
+// less.php note: CSS math must be escaped (~"calc(...)"), see .router/CONTEXT.md.
+
+:root {
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.18 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.18 0 0);
+	--primary: oklch(0.45 0.15 250);
+	--primary-foreground: oklch(1 0 0);
+	--secondary: oklch(0.95 0.02 250);
+	--secondary-foreground: oklch(0.2 0.05 250);
+	--muted: oklch(0.96 0 0);
+	--muted-foreground: oklch(0.5 0 0);
+	--accent: oklch(0.95 0.02 250);
+	--accent-foreground: oklch(0.2 0.05 250);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.92 0 0);
+	--input: oklch(0.92 0 0);
+	--ring: oklch(0.45 0.15 250);
+	--radius: 0.5rem;
+
+	// Derived
+	--radius-sm: ~"calc(var(--radius) - 4px)";
+	--radius-md: ~"calc(var(--radius) - 2px)";
+	--radius-lg: var(--radius);
+	--radius-xl: ~"calc(var(--radius) + 4px)";
+	--font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+	--shadow-sm: 0 1px 2px color-mix(in oklch, var(--foreground) 8%, transparent);
+	--shadow-md: 0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent);
+	--nav-height: 4rem;
+
+	color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: oklch(0.12 0 0);
+		--foreground: oklch(0.98 0 0);
+		--card: oklch(0.15 0 0);
+		--card-foreground: oklch(0.98 0 0);
+		--primary: oklch(0.55 0.15 250);
+		--primary-foreground: oklch(1 0 0);
+		--secondary: oklch(0.2 0.02 250);
+		--secondary-foreground: oklch(0.98 0.01 250);
+		--muted: oklch(0.2 0 0);
+		--muted-foreground: oklch(0.65 0 0);
+		--accent: oklch(0.2 0.02 250);
+		--accent-foreground: oklch(0.98 0.01 250);
+		--destructive: oklch(0.45 0.2 27);
+		--border: oklch(0.25 0 0);
+		--input: oklch(0.25 0 0);
+		--ring: oklch(0.55 0.15 250);
+	}
+}
+
+// ── Legacy aliases ───────────────────────────────────────────────────────────
+//
+// Pre-redesign partials (styles/legacy/*) still reference the old names. They
+// now resolve to the design tokens, so those pages adopt the brand without
+// edits. Remove an alias once nothing references it.
+
+:root {
+	--digitopub-ink: var(--primary);
+	--digitopub-ink-dark: var(--primary);
+	--digitopub-ink-light: var(--primary);
+	--digitopub-primary: var(--primary);
+	--digitopub-primary-dark: var(--primary);
+	--digitopub-primary-light: var(--primary);
+	--digitopub-teal: var(--primary);
+	--digitopub-teal-dark: var(--primary);
+	--digitopub-accent: var(--primary);
+	--digitopub-paper: var(--muted);
+	--digitopub-paper-warm: var(--muted);
+	--digitopub-bg: var(--muted);
+	--digitopub-card-bg: var(--card);
+	--digitopub-border: var(--border);
+	--digitopub-border-strong: var(--border);
+	--digitopub-text: var(--foreground);
+	--digitopub-text-muted: var(--muted-foreground);
+	--digitopub-shadow: var(--shadow-sm);
+	--digitopub-shadow-md: var(--shadow-md);
+	--digitopub-shadow-lg: var(--shadow-md);
+	--digitopub-radius: var(--radius);
+	--digitopub-radius-lg: var(--radius-xl);
+	--digitopub-transition: all 200ms ease;
+	--digitopub-font: var(--font-sans);
+	--digitopub-font-serif: var(--font-sans);
+}
+
+@digitopub-primary: ~"var(--primary)";
+@digitopub-primary-dark: ~"var(--primary)";
+@digitopub-primary-light: ~"var(--primary)";
+@digitopub-accent: ~"var(--primary)";
+@digitopub-teal-dark: ~"var(--primary)";
+@digitopub-bg: ~"var(--muted)";
+@digitopub-card-bg: ~"var(--card)";
+@digitopub-border: ~"var(--border)";
+@digitopub-border-strong: ~"var(--border)";
+@digitopub-text: ~"var(--foreground)";
+@digitopub-text-muted: ~"var(--muted-foreground)";
+@digitopub-shadow: ~"var(--shadow-sm)";
+@digitopub-shadow-md: ~"var(--shadow-md)";
+@digitopub-shadow-lg: ~"var(--shadow-md)";

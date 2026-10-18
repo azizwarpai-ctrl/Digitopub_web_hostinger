@@ -11,7 +11,6 @@
 {/capture}
 {include file="frontend/components/header.tpl" pageTitleTranslated=$pageTitle}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-archive-layout.css?v=3" type="text/css">
 
 {* Compute archive statistics *}
 {assign var="totalArticles" value=0}

@@ -1,0 +1,125 @@
+// ── Button system (the one) ──
+.digitopub-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	font: 500 0.9375rem/1.2 var(--font-sans);
+	padding: 0.625rem 1.125rem;
+	min-height: 2.5rem;
+	border-radius: var(--radius-md);
+	border: 1px solid transparent;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	background: transparent;
+	color: var(--foreground);
+	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+
+	&:active {
+		transform: translateY(1px);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.dp-icon {
+		width: 1rem;
+		height: 1rem;
+		flex: none;
+	}
+
+	// Primary and accent are identical: one accent colour only.
+	&--primary,
+	&--accent {
+		background: var(--primary);
+		color: var(--primary-foreground);
+
+		&:hover,
+		&:focus,
+		&:visited {
+			color: var(--primary-foreground);
+		}
+
+		&:hover {
+			background: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+		}
+	}
+
+	// Secondary
+	&--outline {
+		background: var(--card);
+		color: var(--foreground);
+		border-color: var(--border);
+
+		&:hover,
+		&:focus,
+		&:visited {
+			color: var(--foreground);
+		}
+
+		&:hover {
+			background: var(--accent);
+			color: var(--accent-foreground);
+		}
+	}
+
+	// Tertiary (ghost is kept as an alias for existing templates)
+	&--link,
+	&--ghost {
+		background: transparent;
+		color: var(--primary);
+
+		&:hover,
+		&:focus,
+		&:visited {
+			color: var(--primary);
+		}
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
+	&--link {
+		padding-left: 0;
+		padding-right: 0;
+	}
+
+	&--sm {
+		min-height: 2rem;
+		padding: 0.375rem 0.75rem;
+		font-size: 0.875rem;
+	}
+
+	&--block {
+		display: flex;
+		width: 100%;
+		justify-content: center;
+	}
+}
+
+// The parent theme colours links under .pkp_structure_page; keep button text colours.
+.pkp_structure_page .digitopub-btn--primary,
+.pkp_structure_page .digitopub-btn--accent {
+	&,
+	&:hover,
+	&:focus,
+	&:visited {
+		color: var(--primary-foreground);
+	}
+}
+
+.pkp_structure_page .digitopub-btn--outline {
+	&,
+	&:visited,
+	&:focus {
+		color: var(--foreground);
+	}
+
+	&:hover {
+		color: var(--accent-foreground);
+	}
+}

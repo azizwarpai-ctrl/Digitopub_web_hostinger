@@ -61,12 +61,15 @@ describe("shared chrome", () => {
     expect(tpl).toContain('url page="login"')
   })
 
-  it("navbar search queries DigitoPub search directly", () => {
+  it("navbar is submission-focused: no article search, links to DigitoPub", () => {
     const tpl = read("templates/frontend/components/digitopubNavbar.tpl")
+    expect(tpl).not.toContain("<form")
     expect(tpl).not.toMatch(/url page="search"/)
-    expect(tpl.match(/action="https:\/\/digitopub\.com\/search"/g)).toHaveLength(2)
     expect(tpl).not.toMatch(/name="query"/)
-    expect(tpl.match(/name="q"/g)).toHaveLength(2)
+    expect(tpl).toContain("https://digitopub.com/journals")
+    expect(tpl).toContain("digitopub-navbar__toggle")
+    expect(tpl).toContain('aria-controls="digitopub-navbar-mobile"')
+    expect(tpl.match(/class="digitopub-navbar__brand"/g)).toHaveLength(1)
   })
 })
 

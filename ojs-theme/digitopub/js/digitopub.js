@@ -21,6 +21,24 @@
 			var isOpen = mobileMenu.classList.toggle('is-open');
 			toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 		});
+
+		var closeMenu = function (returnFocus) {
+			mobileMenu.classList.remove('is-open');
+			toggle.setAttribute('aria-expanded', 'false');
+			if (returnFocus) toggle.focus();
+		};
+
+		document.addEventListener('keydown', function (event) {
+			if (event.key === 'Escape' && mobileMenu.classList.contains('is-open')) {
+				closeMenu(true);
+			}
+		});
+
+		mobileMenu.addEventListener('click', function (event) {
+			if (event.target.closest && event.target.closest('a')) {
+				closeMenu(false);
+			}
+		});
 	}
 
 	// Smooth scroll for anchor links

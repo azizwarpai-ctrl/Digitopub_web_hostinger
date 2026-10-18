@@ -24,7 +24,6 @@
  *}
 {include file="frontend/components/header.tpl" pageTitleTranslated=$article->getCurrentPublication()->getLocalizedFullTitle(null, 'html')|strip_unsafe_html}
 
-<link rel="stylesheet" href="{$baseUrl}/plugins/themes/digitopub/styles/digitopub-article-layout.css?v=1" type="text/css">
 
 <div class="page page_article digitopub-article-page">
 	{if $section}
