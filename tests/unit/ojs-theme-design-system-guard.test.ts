@@ -180,6 +180,39 @@ describe("templates load styles only through the theme bundle", () => {
   })
 })
 
+describe("button labels survive the base link colour", () => {
+  // base.less colours links via `.pkp_structure_page a` (0,1,1). A filled
+  // button rendered as <a> needs >= (0,2,0) or its label turns primary-on-
+  // primary (unreadable CTA). Link :hover must not set a colour either.
+  it("filled/outline buttons restate their label colour at .pkp_structure_page specificity", () => {
+    const btn = read(path.join(STYLES, "components/button.less"))
+    expect(btn).toMatch(/\.pkp_structure_page \.digitopub-btn--primary[\s\S]*?color:\s*var\(--primary-foreground\)/)
+    expect(btn).toMatch(/\.pkp_structure_page \.digitopub-btn--outline[\s\S]*?color:\s*var\(--foreground\)/)
+  })
+
+  it("base link hover never changes colour", () => {
+    const base = read(path.join(STYLES, "base.less"))
+    const hover = base.match(/\.pkp_structure_page a:hover\s*\{([^}]*)\}/)
+    expect(hover).not.toBeNull()
+    expect(hover![1]).not.toMatch(/(^|[^-])color\s*:/)
+  })
+})
+
+describe("parent default theme is re-skinned at the LESS-variable source (D6)", () => {
+  const php = () => read(path.join(THEME, "DigitopubThemePlugin.php"))
+
+  it("overrides the parent's font and base colour with DigitoPub values", () => {
+    const src = php()
+    expect(src).toMatch(/modifyStyle\(\s*'stylesheet'/)
+    expect(src).toMatch(/@font:\s*"Geist"/)
+    expect(src).toMatch(/@bg-base:\s*#0056a4/i) // sRGB of oklch(0.45 0.15 250)
+  })
+
+  it("drops the parent's unused Noto Sans webfont", () => {
+    expect(php()).toMatch(/removeStyle\(\s*'font'\s*\)/)
+  })
+})
+
 describe("base layer fixes the OJS default-theme shell", () => {
   const base = () => read(path.join(STYLES, "base.less"))
 
