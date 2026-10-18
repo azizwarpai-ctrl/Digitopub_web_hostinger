@@ -22,6 +22,8 @@ export {
   POLICY_METADATA,
   isValidPolicySlug,
   getPolicyTitleBySlug,
+  isPolicySlugShape,
+  resolvePolicyRoute,
 } from "@/src/features/journals/policy-slugs"
 export type { PolicyMeta } from "@/src/features/journals/policy-slugs"
 export {

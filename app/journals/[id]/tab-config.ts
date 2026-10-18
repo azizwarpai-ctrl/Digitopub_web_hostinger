@@ -15,7 +15,7 @@
  * journal tab routing, and keeps the logic unit-testable in isolation.
  */
 
-import { isValidPolicySlug } from "@/src/features/journals/policy-slugs"
+import { isPolicySlugShape } from "@/src/features/journals/policy-slugs"
 import { isValidAboutSlug } from "@/src/features/journals/about-slugs"
 
 export type JournalDetailTab = "about" | "author" | "current" | "archive" | "policies"
@@ -79,7 +79,7 @@ export interface ResolvedTab {
  *   ["author-guidelines"]              → { tab: "author",    policySlug: null,                aboutSlug: null }
  *   ["policies"]                       → { tab: "policies",  policySlug: null,                aboutSlug: null }
  *   ["policies", "privacy-statement"]  → { tab: "policies",  policySlug: "privacy-statement", aboutSlug: null }
- *   ["policies", "bogus"]              → null  (unknown policy slug)
+ *   ["policies", "Bad Slug"]           → null  (malformed policy slug)
  *   ["about-journal"]                  → { tab: "about",     policySlug: null,                aboutSlug: null }
  *   ["about-journal", "aims-scope"]    → { tab: "about",     policySlug: null,                aboutSlug: "aims-scope" }
  *   ["about-journal", "bogus"]         → null  (unknown about slug)
@@ -96,7 +96,9 @@ export function resolveTabSegments(segments: string[]): ResolvedTab | null {
 
   if (tab === "policies") {
     if (subSegment === undefined) return { tab, policySlug: null, aboutSlug: null }
-    if (!isValidPolicySlug(subSegment)) return null
+    // Policies are discovered dynamically from OJS, so only the shape is
+    // checked here; the page 404s when the slug is not among the fetched tabs.
+    if (!isPolicySlugShape(subSegment)) return null
     return { tab, policySlug: subSegment, aboutSlug: null }
   }
 

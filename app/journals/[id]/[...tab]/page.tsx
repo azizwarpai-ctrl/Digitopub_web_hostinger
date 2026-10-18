@@ -4,8 +4,7 @@ import { notFound } from "next/navigation"
 
 import { prisma } from "@/src/lib/db/config"
 import { resolveJournalOjsId } from "@/src/features/journals/server/resolve-journal"
-import { getPolicyTitleBySlug } from "@/src/features/journals"
-import { getAboutTitleBySlug } from "@/src/features/journals"
+import { getAboutTitleBySlug, resolvePolicyRoute } from "@/src/features/journals"
 import { buildCanonical } from "@/src/lib/seo/canonical"
 import { JournalDetailView } from "@/app/journals/[id]/journal-detail-view"
 import {
@@ -37,6 +36,29 @@ const getJournalTitle = cache(async (id: string): Promise<string | null> => {
   return null
 })
 
+/**
+ * Policy tabs for a journal, fetched server-side only when a dynamic
+ * (non-canonical) policy slug is requested. `null` when OJS is unavailable.
+ */
+const getPolicyTabs = cache(async (id: string) => {
+  try {
+    const ojsResolved = await cachedResolveJournalOjsId(id)
+    if (!ojsResolved.found || !ojsResolved.ojsId) return null
+    const { isOjsConfigured } = await import("@/src/features/ojs/server/ojs-client")
+    if (!isOjsConfigured()) return null
+    const { fetchJournalPolicies } = await import("@/src/features/journals/server/journal-policies-service")
+    return (await fetchJournalPolicies(ojsResolved.ojsId)).tabs
+  } catch (err) {
+    console.error("[journal-tab-route] failed to load policy tabs:", err)
+    return null
+  }
+})
+
+/** Shared by generateMetadata and the page so both agree on 404 + title. */
+const resolvePolicySlug = cache((id: string, slug: string) =>
+  resolvePolicyRoute(slug, () => getPolicyTabs(id)),
+)
+
 export async function generateMetadata({
   params,
 }: JournalTabRouteProps): Promise<Metadata> {
@@ -57,7 +79,9 @@ export async function generateMetadata({
   // Determine section title: prefer sub-tab title over main tab title.
   let sectionTitle: string
   if (resolved.tab === "policies" && resolved.policySlug) {
-    sectionTitle = getPolicyTitleBySlug(resolved.policySlug) ?? TAB_TITLES.policies
+    const policyRoute = await resolvePolicySlug(id, resolved.policySlug)
+    if (!policyRoute.found) notFound()
+    sectionTitle = policyRoute.title ?? TAB_TITLES.policies
   } else if (resolved.tab === "about" && resolved.aboutSlug) {
     sectionTitle = getAboutTitleBySlug(resolved.aboutSlug) ?? TAB_TITLES.about
   } else {
@@ -100,9 +124,15 @@ export async function generateMetadata({
 }
 
 export default async function JournalTabRoute({ params }: JournalTabRouteProps) {
-  const { tab } = await params
+  const { id, tab } = await params
   const resolved = resolveTabSegments(tab)
   if (!resolved) notFound()
+  // Repeat the policy check here: metadata may stream after the shell for
+  // non-bot requests, so generateMetadata alone can't guarantee the 404.
+  if (resolved.tab === "policies" && resolved.policySlug) {
+    const policyRoute = await resolvePolicySlug(id, resolved.policySlug)
+    if (!policyRoute.found) notFound()
+  }
 
   return (
     <JournalDetailView

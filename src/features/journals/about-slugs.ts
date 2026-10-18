@@ -1,7 +1,8 @@
 /**
  * Canonical About Journal sub-tab metadata — client- and server-safe.
  *
- * Mirrors `policy-slugs.ts`. Exports ONLY the URL-facing slug + title pairs
+ * Mirrors the known slug/title list in `policy-slugs.ts`, but About sub-tabs
+ * are a fixed set: this file exports ONLY the URL-facing slug + title pairs
  * so the client bundle never has to pull in OJS / mysql2 modules just to
  * validate a URL segment.
  *
