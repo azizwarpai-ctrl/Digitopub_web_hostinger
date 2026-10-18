@@ -1,1 +1,113 @@
-// ── Base layer (filled by task T4) ──
+// ── Base layer ──
+// Fonts, body/type scale, OJS structure fixes, focus, reduced motion.
+// Colours only through tokens (see tokens.less).
+
+// ── Fonts ──
+@font-face {
+	font-family: "Geist";
+	src: url("@{baseUrl}/plugins/themes/digitopub/fonts/Geist-Variable.woff2") format("woff2");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Mono";
+	src: url("@{baseUrl}/plugins/themes/digitopub/fonts/GeistMono-Variable.woff2") format("woff2");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+// ── Body and text ──
+body,
+.pkp_structure_page {
+	font-family: var(--font-sans);
+	color: var(--foreground);
+	background: var(--background);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+.pkp_structure_page :is(button, input, select, textarea) {
+	font-family: inherit;
+}
+
+.pkp_structure_page a {
+	color: var(--primary);
+}
+
+.pkp_structure_page a:hover {
+	text-underline-offset: 0.15em;
+}
+
+// ── Type scale ──
+// Same selectors as the parent theme (0,1,1); child CSS is emitted later, so
+// these win without inflating specificity.
+.pkp_structure_main h1,
+.pkp_structure_main h2,
+.pkp_structure_main h3 {
+	font-family: var(--font-sans);
+	font-weight: 600;
+	color: var(--foreground);
+	text-wrap: balance;
+}
+
+.pkp_structure_main h1 {
+	font-size: ~"clamp(1.75rem, 1.2rem + 2vw, 2.5rem)";
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+}
+
+.pkp_structure_main h2 {
+	font-size: ~"clamp(1.375rem, 1.1rem + 1vw, 1.75rem)";
+	line-height: 1.25;
+	letter-spacing: -0.01em;
+}
+
+.pkp_structure_main h3 {
+	font-size: 1.125rem;
+	line-height: 1.35;
+}
+
+.pkp_structure_main p {
+	text-wrap: pretty;
+}
+
+// ── Structure: remove the default theme's band under the navbar ──
+.pkp_structure_page .pkp_structure_content {
+	padding-top: 0;
+}
+
+// ── Focus ──
+:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+	outline: none;
+}
+
+// ── Selection ──
+::selection {
+	background: color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+// ── Motion ──
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms;
+		animation-iteration-count: 1;
+		transition-duration: 0.01ms;
+		scroll-behavior: auto;
+	}
+}

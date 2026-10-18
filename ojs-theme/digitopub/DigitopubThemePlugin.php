@@ -51,6 +51,21 @@ class DigitopubThemePlugin extends ThemePlugin
         // from the official OJS Default Theme.
         $this->setParent('defaultthemeplugin');
 
+        // Re-skin the parent Default Theme at its LESS-variable source so every
+        // default-theme component uses DigitoPub's type and colour (D6).
+        // #0056a4 is the sRGB value of DigitoPub's --primary oklch(0.45 0.15 250);
+        // the parent runs colour functions on @bg-base, so it must be a hex.
+        // setParent() has already run the parent's init(), so its styles exist
+        // and our variables are appended after (and win over) its own.
+        $this->modifyStyle('stylesheet', ['addLessVariables' => join("\n", [
+            '@font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;',
+            '@font-heading: @font;',
+            '@bg-base: #0056a4;',
+            '@text-bg-base: #ffffff;',
+        ])]);
+        // The parent's Noto Sans webfont is no longer used.
+        $this->removeStyle('font');
+
         // Load DigitoPub custom styles and scripts for the global redesign.
         $this->addStyle('digitopub-styles-v10', 'styles/digitopub.less');
         $this->addScript('digitopub-scripts', 'js/digitopub.js');
