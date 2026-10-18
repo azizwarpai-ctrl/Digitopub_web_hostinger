@@ -60,10 +60,21 @@ describe("design tokens match DigitoPub (app/globals.css)", () => {
     expect(sm.radius).toBe(dp.radius)
   })
 
-  it("dark tokens are identical (DigitoPub .dark == theme prefers-color-scheme: dark)", () => {
+  it("dark tokens are identical (DigitoPub .dark == theme dark block)", () => {
     const dp = tokensIn(globals, /\n\.dark\s*\{/)
-    const sm = tokensIn(tokens, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root/)
+    const sm = tokensIn(tokens, /:root\[data-sm-theme="dark"\]\s*\{/)
     for (const t of TOKENS) expect(sm[t], `--${t}`).toBe(dp[t])
+  })
+
+  // Dark mode stays opt-in until the legacy page partials (site home,
+  // journal home, auth) stop hard-coding light surfaces: with dark tokens
+  // auto-applied, login rendered white text on a white card (axe 1.06:1).
+  it("does not auto-apply dark mode while legacy page partials exist", () => {
+    const legacyLeft = existsSync(path.join(STYLES, "legacy/auth.less"))
+    if (!legacyLeft) return
+    const code = tokens.replace(/\/\/.*$/gm, "")
+    expect(code).not.toMatch(/prefers-color-scheme:\s*dark/)
+    expect(code).toMatch(/color-scheme:\s*light;/)
   })
 })
 
@@ -248,6 +259,10 @@ describe("base layer fixes the OJS default-theme shell", () => {
 
   it("removes the default theme's 30px band above page content", () => {
     expect(base()).toMatch(/\.pkp_structure_content\s*\{[^}]*padding-top:\s*0/)
+  })
+
+  it("keeps h1 >= 28px at the default theme's 14px root (clamp minimum 2rem)", () => {
+    expect(base()).toMatch(/\.pkp_structure_main h1\s*\{[^}]*font-size:\s*~"clamp\(2rem,/)
   })
 
   it("provides a visible keyboard focus ring and honours reduced motion", () => {
