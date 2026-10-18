@@ -58,6 +58,72 @@ function ojbrRows(): PolicySourceRows {
   }
 }
 
+type MenuRowT = PolicySourceRows["menuRows"][number]
+
+/**
+ * Rows for one item assigned to the journal's "Journal Policies" menu. Like
+ * the real SQL (menu ⋈ item ⋈ LEFT JOIN item settings), each menu row carries
+ * the item's own settings — taken here from the ojbr standalone fixture.
+ */
+function menuItem(id: number, seq: number, parentSeq: number | null = null): MenuRowT[] {
+  const itemRows = ojbrRows().standaloneNavRows.filter((r) => r.navigation_menu_item_id === id)
+  if (itemRows.length === 0) throw new Error(`fixture has no nav item ${id}`)
+  return itemRows.map((r) => ({
+    navigation_menu_item_id: id,
+    slug: r.path as string,
+    type: r.type,
+    seq,
+    parent_seq: parentSeq,
+    setting_name: r.setting_name as string,
+    setting_value: r.setting_value,
+    locale: r.locale,
+  }))
+}
+
+describe("buildPolicyTabs — editor-controlled order via a 'Journal Policies' menu", () => {
+  it("orders tabs by the menu, then appends unlisted policies in creation order", () => {
+    const rows = ojbrRows()
+    rows.menuRows = [
+      ...menuItem(190, 0), // Policies on Ethics
+      ...menuItem(390, 1), // Repository Policy
+      ...menuItem(39, 2), // built-in Privacy (content from journal_settings)
+      ...menuItem(113, 3), // Copyright & Licensing
+    ]
+    expect(buildPolicyTabs(rows).map((t) => t.slug)).toEqual([
+      "policies-on-ethics",
+      "repository-policy",
+      "privacy-statement",
+      "copyright-licensing",
+      // not in the menu → after it, OJS creation order
+      "editorial-workflow",
+      "indexing-archiving",
+      "dois-orcid",
+    ])
+  })
+
+  it("orders nested items within their parent and never shows the parent container", () => {
+    const rows = ojbrRows()
+    rows.menuRows = [
+      ...menuItem(42, 0), // "Journal Policies" dropdown parent
+      ...menuItem(113, 1, 0), // child #2
+      ...menuItem(190, 0, 0), // child #1
+      ...menuItem(390, 1), // top-level, after the dropdown
+    ]
+    const slugs = buildPolicyTabs(rows).map((t) => t.slug)
+    expect(slugs.slice(0, 3)).toEqual(["policies-on-ethics", "copyright-licensing", "repository-policy"])
+    expect(slugs).not.toContain("policies")
+  })
+
+  it("does not warn about duplicates when an item is both in the menu and standalone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const rows = ojbrRows()
+    rows.menuRows = [...menuItem(39, 0), ...menuItem(390, 1)]
+    buildPolicyTabs(rows)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
 describe("buildPolicyTabs — dynamic OJS policies (#182)", () => {
   it("includes a policy page that is not in the known list (Repository Policy)", () => {
     const tabs = buildPolicyTabs(ojbrRows())
