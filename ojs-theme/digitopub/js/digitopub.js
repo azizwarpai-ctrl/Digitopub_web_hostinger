@@ -29,7 +29,9 @@
 			var targetId = anchor.getAttribute('href');
 			if (targetId === '#') return;
 
-			var target = document.querySelector(targetId);
+			// By id, not querySelector: an id such as "1-intro" is not a valid
+			// CSS selector and would throw, aborting this handler.
+			var target = document.getElementById(targetId.slice(1));
 			if (target) {
 				event.preventDefault();
 				target.scrollIntoView({ behavior: 'smooth', block: 'start' });

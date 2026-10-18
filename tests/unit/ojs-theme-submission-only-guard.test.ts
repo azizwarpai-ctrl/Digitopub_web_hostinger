@@ -70,6 +70,17 @@ describe("shared chrome", () => {
   })
 })
 
+describe("theme script robustness", () => {
+  const js = read("js/digitopub.js")
+
+  it("resolves in-page anchor targets by id, never as a CSS selector built from href", () => {
+    // querySelector('#1-intro') throws a DOMException (invalid selector) and
+    // aborts the click handler; getElementById takes any id verbatim.
+    expect(js).not.toMatch(/querySelector\(\s*targetId\s*\)/)
+    expect(js).toMatch(/getElementById\(\s*targetId\.slice\(1\)\s*\)/)
+  })
+})
+
 describe("theme plugin redirects issue pages", () => {
   const php = read("DigitopubThemePlugin.php")
 
