@@ -42,7 +42,7 @@
 		grid-template-columns: minmax(220px, 320px) 1fr;
 		gap: 3.5rem;
 		align-items: center;
-		background: linear-gradient(135deg, #ffffff 0%, @digitopub-bg 100%);
+		background: linear-gradient(135deg, var(--card) 0%, @digitopub-bg 100%);
 		border: 1px solid @digitopub-border;
 		border-radius: var(--digitopub-radius-lg);
 		padding: 3rem;
@@ -75,7 +75,7 @@
 
 		&:hover,
 		&:focus-within {
-			box-shadow: 0 20px 40px rgba(10, 31, 61, 0.15);
+			box-shadow: var(--shadow-md);
 			transform: translateY(-4px);
 		}
 
@@ -153,7 +153,7 @@
 
 	&__card {
 		.digitopub-container;
-		background-color: #fff;
+		background-color: var(--card);
 		border: 1px solid @digitopub-border;
 		border-radius: var(--digitopub-radius-lg);
 		padding: 2.25rem;
@@ -183,7 +183,7 @@
 	padding: 1rem 0 2.5rem;
 
 	.digitopub-container {
-		background-color: #fff;
+		background-color: var(--card);
 		border: 1px solid @digitopub-border;
 		border-radius: var(--digitopub-radius-lg);
 		padding: 1.75rem 2.25rem;
@@ -254,7 +254,7 @@
 
 // Article card
 .digitopub-article-card {
-	background-color: #fff;
+	background-color: var(--card);
 	border: 1px solid @digitopub-border;
 	border-radius: var(--digitopub-radius-lg);
 	padding: 2rem 2.25rem;
@@ -428,28 +428,28 @@
 		.digitopub-btn--primary,
 		.obj_galley_link.pdf {
 			background: @digitopub-primary;
-			color: #fff;
+			color: var(--primary-foreground);
 			border-color: transparent;
 
 			&:hover,
 			&:focus {
 				background: @digitopub-primary-dark;
-				color: #fff;
-				box-shadow: 0 4px 14px rgba(10, 31, 61, 0.2);
+				color: var(--primary-foreground);
+				box-shadow: var(--shadow-md);
 				transform: translateY(-1px);
 			}
 		}
 
 		.obj_galley_link.html {
 			background: @digitopub-accent;
-			color: #fff;
+			color: var(--primary-foreground);
 			border-color: transparent;
 
 			&:hover,
 			&:focus {
 				background: @digitopub-teal-dark;
-				color: #fff;
-				box-shadow: 0 4px 14px rgba(42, 127, 127, 0.25);
+				color: var(--primary-foreground);
+				box-shadow: var(--shadow-md);
 				transform: translateY(-1px);
 			}
 		}
