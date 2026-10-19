@@ -136,6 +136,19 @@ describe("LESS hygiene", () => {
     }
   })
 
+  // less.php divides "a / b" outside font shorthands: `grid-column: 1 / -1`
+  // compiled to `grid-column: -1`, which added an implicit grid column and
+  // squeezed the mobile journal-home title to 0px (one letter per line, live).
+  it("escapes slash values in grid placement and aspect-ratio (less.php divides them)", () => {
+    for (const f of lessFiles()) {
+      read(f).split("\n").forEach((line, i) => {
+        const code = line.replace(/\/\/.*$/, "")
+        const m = code.match(/^\s*(grid-(?:column|row|area)|aspect-ratio|grid-template-(?:rows|columns|areas))\s*:\s*([^;]*)/)
+        if (m && m[2].includes("/")) expect(m[2], `${rel(f)}:${i + 1}`).toMatch(/^~"[^"]*\/[^"]*"/)
+      })
+    }
+  })
+
   it("has no pill radii or retired brand colours (teal / navy)", () => {
     for (const f of lessFiles()) {
       const src = read(f)
