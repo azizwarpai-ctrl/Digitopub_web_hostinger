@@ -1,38 +1,59 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import Image from "next/image"
 import Link from "next/link"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { AuthShell } from "@/src/features/auth/components/auth-shell"
 import { PasswordRecoveryError, requestPasswordReset } from "@/src/features/auth/api/use-forgot-password"
+
+const RESEND_COOLDOWN_MS = 60_000
+const RATE_LIMITED_MESSAGE = "Too many requests. Please try again later."
 
 export default function AdminForgotPasswordPage() {
   const [email, setEmail] = useState("")
+  const [sentTo, setSentTo] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [resendAt, setResendAt] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
   // A ref, not state: guards against a double submit before re-render.
   const inFlight = useRef(false)
+  const statusRef = useRef<HTMLDivElement>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  useEffect(() => {
+    if (sentTo) statusRef.current?.focus()
+  }, [sentTo])
+
+  useEffect(() => {
+    if (resendAt === null) return
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000))
+      setSecondsLeft(left)
+      if (left === 0) clearInterval(id)
+    }
+    const id = setInterval(tick, 1000)
+    tick()
+    return () => clearInterval(id)
+  }, [resendAt])
+
+  const send = async (address: string) => {
     if (inFlight.current) return
     inFlight.current = true
     setIsLoading(true)
     setError(null)
 
     try {
-      const result = await requestPasswordReset({ email })
-      setSuccessMessage(result.message)
+      await requestPasswordReset({ email: address })
+      setSentTo(address)
+      setResendAt(Date.now() + RESEND_COOLDOWN_MS)
     } catch (err: unknown) {
       if (err instanceof PasswordRecoveryError && err.status === 429) {
-        setError("Too many requests. Please try again later.")
+        setError(RATE_LIMITED_MESSAGE)
       } else {
         setError(err instanceof Error ? err.message : "An error occurred")
       }
@@ -42,77 +63,84 @@ export default function AdminForgotPasswordPage() {
     }
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void send(email)
+  }
+
   const onEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value)
     if (error) setError(null)
   }
 
-  return (
-    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-8 sm:p-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Image
-            src="/images/logodigitopub.png"
-            alt="DigitoPub"
-            width={180}
-            height={60}
-            className="mx-auto mb-4"
-          />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-        </div>
+  const cooling = resendAt !== null && secondsLeft > 0
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Reset your password</CardTitle>
-            <CardDescription>Enter your admin email and we&apos;ll send you a reset link.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {successMessage ? (
-              <div className="flex flex-col gap-6">
-                <div role="status">
-                  <AlertBanner variant="success" message={successMessage} />
-                </div>
-                <div className="text-center text-sm text-muted-foreground">
-                  <Link href="/admin/login" className="underline underline-offset-4 hover:text-primary">
-                    Back to log in
-                  </Link>
-                </div>
+  return (
+    <AuthShell
+      title="Reset your password"
+      description="Enter your admin email and we'll send you a reset link."
+      footer={
+        <Link href="/admin/login" className="underline underline-offset-4 hover:text-primary">
+          Back to log in
+        </Link>
+      }
+    >
+      {sentTo ? (
+        <div className="flex flex-col gap-6">
+          <div role="status" tabIndex={-1} ref={statusRef} className="grid gap-2 text-sm outline-none">
+            <p className="text-foreground">
+              If an account exists for <strong>{sentTo}</strong>, we sent a reset link to it.
+            </p>
+            <p className="text-muted-foreground">
+              The link expires in 15 minutes. Check your spam folder if it doesn&apos;t arrive.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={isLoading || cooling}
+              aria-busy={isLoading}
+              onClick={() => void send(sentTo)}
+            >
+              {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {cooling ? `Send another link in ${secondsLeft}s` : "Send another link"}
+            </Button>
+            {error && (
+              <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                <AlertBanner variant="error" message={error} />
               </div>
-            ) : (
-              <form onSubmit={handleSubmit}>
-                <div className="flex flex-col gap-6">
-                  <div className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      autoComplete="email"
-                      placeholder="you@example.com"
-                      required
-                      value={email}
-                      onChange={onEmailChange}
-                    />
-                  </div>
-                  {error && (
-                    <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                      <AlertBanner variant="error" message={error} />
-                    </div>
-                  )}
-                  <Button type="submit" className="w-full" disabled={isLoading} aria-busy={isLoading}>
-                    {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-                    {isLoading ? "Sending..." : "Send reset link"}
-                  </Button>
-                </div>
-                <div className="mt-4 text-center text-sm text-muted-foreground">
-                  <Link href="/admin/login" className="underline underline-offset-4 hover:text-primary">
-                    Back to log in
-                  </Link>
-                </div>
-              </form>
             )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-6">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                required
+                value={email}
+                onChange={onEmailChange}
+              />
+            </div>
+            {error && (
+              <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                <AlertBanner variant="error" message={error} />
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={isLoading} aria-busy={isLoading}>
+              {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {isLoading ? "Sending..." : "Send reset link"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </AuthShell>
   )
 }
