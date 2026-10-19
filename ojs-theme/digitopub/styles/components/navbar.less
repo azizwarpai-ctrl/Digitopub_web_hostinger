@@ -222,3 +222,10 @@
 		}
 	}
 }
+
+// The site logo is dark ink; invert it on the dark navbar.
+@media (prefers-color-scheme: dark) {
+	.digitopub-navbar__brand img {
+		filter: brightness(0) invert(1);
+	}
+}
