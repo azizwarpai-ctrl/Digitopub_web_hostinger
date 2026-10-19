@@ -15,6 +15,9 @@ const nextConfig = {
       { protocol: 'https', hostname: 'journals.digitopub.com' },
     ],
   },
+  // Hostinger's build container caps threads/processes far below the 56 CPUs
+  // Next detects; 56 page-data workers fail with EAGAIN (os error 11).
+  experimental: { cpus: 2 },
   transpilePackages: ['@splinetool/react-spline', '@splinetool/runtime'],
   webpack: (config, { dev, isServer }) => {
     // Suppress source map warnings in development
