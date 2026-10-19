@@ -5,7 +5,7 @@
 {include file="frontend/components/header.tpl" pageTitle="user.login.resetPassword"}
 
 <div class="page page_lost_password digitopub-auth-page">
-	<main class="dp-auth" id="main-content">
+	<div class="dp-auth" id="main-content">
 		<div class="dp-auth__card">
 			<h1 class="dp-auth__title">Reset your password</h1>
 			<p class="dp-auth__lead">Enter the email address for your {if $currentContext}{$currentContext->getLocalizedName()|escape}{else}Submit Manager{/if} account and we will send you a reset link.</p>
@@ -45,7 +45,7 @@
 
 			<p class="dp-auth__switch">Remembered it? <a href="{url page="login"}">Log in</a></p>
 		</div>
-	</main>
+	</div>
 </div>
 
 <script>
@@ -57,6 +57,15 @@
 		if (btn) {
 			btn.classList.add('is-loading');
 			btn.disabled = true;
+		}
+	});
+	// Back/forward cache restores the disabled state; re-enable the button.
+	window.addEventListener('pageshow', function(event) {
+		if (!event.persisted) return;
+		var btn = form.querySelector('button[type="submit"]');
+		if (btn) {
+			btn.disabled = false;
+			btn.classList.remove('is-loading');
 		}
 	});
 	var email = document.getElementById('email');

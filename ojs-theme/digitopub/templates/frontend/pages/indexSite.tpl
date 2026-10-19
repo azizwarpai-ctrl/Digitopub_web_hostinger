@@ -11,7 +11,7 @@
  *}
 {include file="frontend/components/header.tpl"}
 
-<main class="dp-portal digitopub-homepage" id="digitopub-homepage-content">
+<div class="dp-portal digitopub-homepage" id="digitopub-homepage-content">
 
 	<section class="dp-site-hero" aria-labelledby="digitopub-hero-title">
 		<div class="dp-portal__inner">
@@ -65,7 +65,7 @@
 									<img src="{$journalFilesPath}{$journal->getId()}/{$cover.uploadName|escape:"url"}" width="{$cover.width|escape}" height="{$cover.height|escape}" loading="lazy" decoding="async" alt="{$journal->getLocalizedName()|escape}">
 								{else}
 									<div class="dp-journal-card__placeholder" aria-hidden="true">
-										<span>{$journal->getLocalizedName()|escape|truncate:2:""}</span>
+										<span>{$journal->getLocalizedName()|truncate:2:""|escape}</span>
 									</div>
 								{/if}
 							</div>
@@ -73,8 +73,8 @@
 								<h3 class="dp-journal-card__title"><a href="{$journalUrl}">{$journal->getLocalizedName()|escape}</a></h3>
 							</div>
 							<div class="dp-journal-card__actions">
-								<a href="{$submitUrl}" class="digitopub-btn digitopub-btn--primary digitopub-btn--sm digitopub-btn--block">Submit</a>
-								<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--link digitopub-btn--sm">View on DigitoPub</a>
+								<a href="{$submitUrl}" class="digitopub-btn digitopub-btn--primary digitopub-btn--sm digitopub-btn--block">Submit<span class="pkp_screen_reader"> to {$journal->getLocalizedName()|escape}</span></a>
+								<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--link digitopub-btn--sm">View on DigitoPub<span class="pkp_screen_reader">: {$journal->getLocalizedName()|escape}</span></a>
 							</div>
 						</article>
 					{/foreach}
@@ -85,6 +85,6 @@
 		</div>
 	</section>
 
-</main>
+</div>
 
 {include file="frontend/components/footer.tpl"}

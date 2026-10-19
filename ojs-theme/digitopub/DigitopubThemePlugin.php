@@ -24,6 +24,13 @@ class DigitopubThemePlugin extends ThemePlugin
     public const DIGITOPUB_BASE_URL = 'https://digitopub.com';
 
     /**
+     * Largest cover (width x height) we decode for thumbnails. GD needs ~4
+     * bytes per pixel, and exhausting memory_limit is a fatal error that
+     * try/catch cannot catch, so bigger sources fall back to the original.
+     */
+    private const MAX_THUMB_SOURCE_PIXELS = 12000000;
+
+    /**
      * @copydoc Plugin::register()
      */
     public function register($category, $path, $mainContextId = null)
@@ -231,6 +238,15 @@ class DigitopubThemePlugin extends ThemePlugin
                 $target = $dir . '/' . $name;
                 if (!is_file($target)) {
                     if ($img === null) {
+                        // Cheap checks before the expensive decode, so a bad
+                        // dir or an oversized source costs nothing per request.
+                        if (!is_writable($dir)) {
+                            return null;
+                        }
+                        $size = @getimagesize($source);
+                        if (!$size || $size[0] * $size[1] > self::MAX_THUMB_SOURCE_PIXELS) {
+                            return null;
+                        }
                         $data = file_get_contents($source);
                         $img = $data === false ? false : @imagecreatefromstring($data);
                         if (!$img) {
@@ -251,7 +267,7 @@ class DigitopubThemePlugin extends ThemePlugin
                     imagesavealpha($dst, true);
                     // Write to a temp file, then atomically rename the TEMP file.
                     $tmp = $dir . '/dp-thumb-tmp-' . uniqid('', true) . '.webp';
-                    $ok = imagewebp($dst, $tmp, 78);
+                    $ok = @imagewebp($dst, $tmp, 78);
                     imagedestroy($dst);
                     if (!$ok || !rename($tmp, $target)) {
                         if (is_file($tmp)) {

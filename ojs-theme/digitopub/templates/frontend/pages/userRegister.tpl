@@ -8,7 +8,7 @@
 {assign var="siteContextId" value=PKP\core\PKPApplication::SITE_CONTEXT_ID|intval}
 
 <div class="page page_register digitopub-auth-page">
-	<main class="dp-auth dp-auth--wide" id="main-content">
+	<div class="dp-auth dp-auth--wide" id="main-content">
 		<div class="dp-auth__card">
 			<h1 class="dp-auth__title">Create your account</h1>
 			<p class="dp-auth__lead">Register to submit to {if $currentContext}{$currentContext->getLocalizedName()|escape}{else}Submit Manager{/if}.</p>
@@ -157,7 +157,7 @@
 				{capture assign="rolesProfileUrl"}{url page="user" op="profile" path="roles"}{/capture}
 				<p class="dp-auth__switch">Already have an account? <a href="{url page="login" source=$rolesProfileUrl}">Log in</a></p>
 		</div>
-	</main>
+	</div>
 </div>
 
 <script>
@@ -169,6 +169,15 @@
 		if (btn) {
 			btn.classList.add('is-loading');
 			btn.disabled = true;
+		}
+	});
+	// Back/forward cache restores the disabled state; re-enable the button.
+	window.addEventListener('pageshow', function(event) {
+		if (!event.persisted) return;
+		var btn = form.querySelector('button[type="submit"]');
+		if (btn) {
+			btn.disabled = false;
+			btn.classList.remove('is-loading');
 		}
 	});
 	var given = document.getElementById('givenName');

@@ -193,6 +193,44 @@ describe("P6 no literal colours anywhere outside tokens.less", () => {
   })
 })
 
+// ── Review fixes (Phase 4 reviewer findings, verified) ───────────────────────
+
+describe("review fixes", () => {
+  const pageTpls = ["indexJournal", "indexSite", "userLogin", "userRegister", "userLostPassword", "submissions", "contact", "navigationMenuItemViewContent"]
+
+  it.each(pageTpls)("%s adds no second <main> (header.tpl already has role=main)", (p) => {
+    expect(tpl(p)).not.toMatch(/<main[\s>]/)
+  })
+
+  it("link-coloured text in page partials uses --link, not --primary (dark AA)", () => {
+    for (const f of walk(path.join(STYLES, "pages"), ".less")) {
+      expect(read(f), path.relative(ROOT, f)).not.toMatch(/(^|[^-])color:\s*var\(--primary\)/m)
+    }
+  })
+
+  it("repeated card links name their journal for screen readers (WCAG 2.4.4)", () => {
+    const src = tpl("indexSite")
+    expect(src).toMatch(/>Submit<span class="pkp_screen_reader"> to \{\$journal->getLocalizedName\(\)\|escape\}<\/span>/)
+    expect(src).toMatch(/View on DigitoPub<span class="pkp_screen_reader">: \{\$journal->getLocalizedName\(\)\|escape\}<\/span>/)
+  })
+
+  it.each(["userLogin", "userRegister", "userLostPassword"])("%s re-enables its submit button on back/forward cache restore", (p) => {
+    expect(tpl(p)).toMatch(/addEventListener\('pageshow'[\s\S]{0,200}persisted[\s\S]{0,200}disabled = false/)
+  })
+
+  it("initials are truncated before escaping (no half HTML entities)", () => {
+    for (const p of ["indexJournal", "indexSite"]) expect(tpl(p), p).not.toMatch(/\|escape\|truncate/)
+  })
+
+  it("thumbnail generation cannot fatally exhaust memory or warn on every request", () => {
+    const php = read(path.join(THEME, "DigitopubThemePlugin.php"))
+    expect(php).toMatch(/getimagesize\(\$source\)/)
+    expect(php).toMatch(/MAX_THUMB_SOURCE_PIXELS/)
+    expect(php).toMatch(/is_writable\(\$dir\)/)
+    expect(php).toMatch(/@imagewebp\(/)
+  })
+})
+
 // ── P7: dark mode back on ────────────────────────────────────────────────────
 
 describe("P7 dark mode follows the system again (E2)", () => {

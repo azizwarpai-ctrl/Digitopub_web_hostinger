@@ -23,7 +23,7 @@
 	{assign var="journalCover" value=$currentJournal->getLocalizedData('pageHeaderLogoImage')}
 {/if}
 
-<main class="dp-portal" id="digitopub-journal-content">
+<div class="dp-portal" id="digitopub-journal-content">
 
 	<section class="dp-portal-hero" aria-labelledby="digitopub-journal-hero-title">
 		<div class="dp-portal__inner dp-portal-hero__grid">
@@ -35,7 +35,7 @@
 					<img class="dp-portal-hero__cover" src="{$publicFilesDir}/{$journalCover.uploadName|escape:"url"}" width="{$journalCover.width|escape}" height="{$journalCover.height|escape}" fetchpriority="high" decoding="async" alt="{$currentJournal->getLocalizedName()|escape}">
 				{else}
 					<div class="dp-portal-hero__cover dp-portal-hero__cover--placeholder" aria-hidden="true">
-						<span>{$currentJournal->getLocalizedName()|escape|truncate:2:""}</span>
+						<span>{$currentJournal->getLocalizedName()|truncate:2:""|escape}</span>
 					</div>
 				{/if}
 			</div>
@@ -131,6 +131,6 @@
 
 	</div>
 
-</main>
+</div>
 
 {include file="frontend/components/footer.tpl"}
