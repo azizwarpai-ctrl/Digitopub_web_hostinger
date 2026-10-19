@@ -71,11 +71,11 @@
 // Article Header
 .digitopub-article-header {
 	padding: 3rem 0 2.5rem;
-	background: linear-gradient(135deg, #ffffff 0%, @digitopub-bg 100%);
+	background: linear-gradient(135deg, var(--card) 0%, @digitopub-bg 100%);
 	border-bottom: 1px solid @digitopub-border;
 
 	&__card {
-		background-color: #fff;
+		background-color: var(--card);
 		border: 1px solid @digitopub-border;
 		border-radius: var(--digitopub-radius-lg);
 		padding: 2.5rem;
@@ -93,7 +93,7 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		color: #fff;
+		color: var(--primary-foreground);
 		background-color: @digitopub-accent;
 		padding: 0.375rem 0.875rem;
 		border-radius: var(--radius);
@@ -265,7 +265,7 @@
 
 // Article blocks (cards)
 .digitopub-article-block {
-	background-color: #fff;
+	background-color: var(--card);
 	border: 1px solid @digitopub-border;
 	border-radius: var(--digitopub-radius-lg);
 	box-shadow: @digitopub-shadow;
@@ -345,25 +345,25 @@
 
 	.obj_galley_link.pdf {
 		background: @digitopub-primary;
-		color: #fff;
+		color: var(--primary-foreground);
 		border-color: transparent;
 
 		&:hover,
 		&:focus {
 			background: @digitopub-primary-dark;
-			box-shadow: 0 4px 14px rgba(10, 31, 61, 0.2);
+			box-shadow: var(--shadow-md);
 		}
 	}
 
 	.obj_galley_link.html {
 		background: @digitopub-accent;
-		color: #fff;
+		color: var(--primary-foreground);
 		border-color: transparent;
 
 		&:hover,
 		&:focus {
 			background: @digitopub-teal-dark;
-			box-shadow: 0 4px 14px rgba(42, 127, 127, 0.25);
+			box-shadow: var(--shadow-md);
 		}
 	}
 }
@@ -459,7 +459,7 @@
 	gap: 1rem;
 
 	.return {
-		color: #fff;
+		color: var(--primary-foreground);
 		font-size: 0.9375rem;
 		font-weight: 600;
 		text-decoration: none;
@@ -467,7 +467,7 @@
 	}
 
 	.title {
-		color: #fff;
+		color: var(--primary-foreground);
 		font-size: 1rem;
 		font-weight: 600;
 		text-decoration: none;
@@ -479,7 +479,7 @@
 	}
 
 	.download {
-		color: #fff;
+		color: var(--primary-foreground);
 		font-size: 0.875rem;
 		font-weight: 600;
 		text-decoration: none;
@@ -660,22 +660,22 @@
 /* Article Header */
 .digitopub-article-header {
 	padding: 3rem 0 2.5rem;
-	background: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);
-	border-bottom: 1px solid #d7dde5;
+	background: linear-gradient(135deg, var(--card) 0%, var(--background) 100%);
+	border-bottom: 1px solid var(--border);
 	font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .digitopub-article-header__card {
-	background-color: #ffffff;
-	border: 1px solid #d7dde5;
+	background-color: var(--card);
+	border: 1px solid var(--border);
 	border-radius: 0.75rem;
 	padding: 2.5rem;
-	box-shadow: 0 4px 12px rgba(10, 31, 61, 0.08), 0 2px 4px rgba(10, 31, 61, 0.04);
+	box-shadow: var(--shadow-md);
 	transition: all 200ms ease;
 }
 
 .digitopub-article-header__card:hover {
-	box-shadow: 0 12px 28px rgba(10, 31, 61, 0.12), 0 4px 8px rgba(10, 31, 61, 0.06);
+	box-shadow: var(--shadow-md);
 }
 
 .digitopub-article-header__type {
@@ -684,7 +684,7 @@
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
-	color: #ffffff;
+	color: var(--primary-foreground);
 	background-color: var(--primary);
 	padding: 0.375rem 0.875rem;
 	border-radius: var(--radius);
@@ -705,7 +705,7 @@
 	font-size: ~"clamp(1.25rem, 2vw, 1.625rem)";
 	font-weight: 400;
 	line-height: 1.4;
-	color: #5a6578;
+	color: var(--muted-foreground);
 	margin: 0 0 1.5rem;
 }
 
@@ -726,16 +726,16 @@
 .digitopub-article-header__author-name {
 	font-size: 1.0625rem;
 	font-weight: 600;
-	color: #1a202c;
+	color: var(--foreground);
 }
 
 .digitopub-article-header__author-affiliation {
 	font-size: 0.9375rem;
-	color: #5a6578;
+	color: var(--muted-foreground);
 }
 
 .digitopub-article-header__author-sep {
-	color: #5a6578;
+	color: var(--muted-foreground);
 }
 
 .digitopub-article-header__orcid {
@@ -761,7 +761,7 @@
 	gap: 0.75rem 1.5rem;
 	margin-bottom: 1.25rem;
 	font-size: 0.9375rem;
-	color: #5a6578;
+	color: var(--muted-foreground);
 }
 
 .digitopub-article-header__meta-item {
@@ -795,16 +795,16 @@
 
 .digitopub-article-header__keyword {
 	font-size: 0.8125rem;
-	color: #5a6578;
-	background-color: #f6f8fa;
+	color: var(--muted-foreground);
+	background-color: var(--muted);
 	padding: 0.25rem 0.75rem;
 	border-radius: var(--radius);
-	border: 1px solid #d7dde5;
+	border: 1px solid var(--border);
 }
 
 .digitopub-article-header__license {
 	font-size: 0.9375rem;
-	color: #5a6578;
+	color: var(--muted-foreground);
 	line-height: 1.6;
 }
 
@@ -826,7 +826,7 @@
 /* Article Body */
 .digitopub-article-body {
 	padding: 2.5rem 0 5rem;
-	background-color: #f6f8fa;
+	background-color: var(--background);
 	font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -855,16 +855,16 @@
 
 /* Article blocks (cards) */
 .digitopub-article-block {
-	background-color: #ffffff;
-	border: 1px solid #d7dde5;
+	background-color: var(--card);
+	border: 1px solid var(--border);
 	border-radius: 0.75rem;
-	box-shadow: 0 1px 3px rgba(10, 31, 61, 0.08), 0 1px 2px rgba(10, 31, 61, 0.06);
+	box-shadow: var(--shadow-sm);
 	transition: all 200ms ease;
 	overflow: hidden;
 }
 
 .digitopub-article-block:hover {
-	box-shadow: 0 4px 12px rgba(10, 31, 61, 0.08), 0 2px 4px rgba(10, 31, 61, 0.04);
+	box-shadow: var(--shadow-md);
 }
 
 .digitopub-article-block__title {
@@ -874,12 +874,12 @@
 	color: var(--primary);
 	margin: 0;
 	padding: 1.25rem 1.5rem;
-	border-bottom: 1px solid #d7dde5;
+	border-bottom: 1px solid var(--border);
 }
 
 .digitopub-article-block__body {
 	padding: 1.5rem;
-	color: #1a202c;
+	color: var(--foreground);
 	line-height: 1.7;
 }
 
@@ -940,14 +940,14 @@
 .digitopub-article-actions .obj_galley_link {
 	background-color: transparent;
 	color: var(--primary);
-	border-color: #d7dde5;
+	border-color: var(--border);
 }
 
 .digitopub-article-actions .digitopub-btn:hover,
 .digitopub-article-actions .obj_galley_link:hover,
 .digitopub-article-actions .digitopub-btn:focus,
 .digitopub-article-actions .obj_galley_link:focus {
-	background-color: #f6f8fa;
+	background-color: var(--muted);
 	border-color: var(--primary);
 	color: var(--primary);
 	transform: translateY(-1px);
@@ -955,26 +955,26 @@
 
 .digitopub-article-actions .obj_galley_link.pdf {
 	background: var(--primary);
-	color: #ffffff;
+	color: var(--primary-foreground);
 	border-color: transparent;
 }
 
 .digitopub-article-actions .obj_galley_link.pdf:hover,
 .digitopub-article-actions .obj_galley_link.pdf:focus {
 	background: var(--primary);
-	box-shadow: 0 4px 14px rgba(10, 31, 61, 0.2);
+	box-shadow: var(--shadow-md);
 }
 
 .digitopub-article-actions .obj_galley_link.html {
 	background: var(--primary);
-	color: #ffffff;
+	color: var(--primary-foreground);
 	border-color: transparent;
 }
 
 .digitopub-article-actions .obj_galley_link.html:hover,
 .digitopub-article-actions .obj_galley_link.html:focus {
 	background: var(--primary);
-	box-shadow: 0 4px 14px rgba(42, 127, 127, 0.25);
+	box-shadow: var(--shadow-md);
 }
 
 /* Metadata list */
@@ -998,12 +998,12 @@
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
-	color: #5a6578;
+	color: var(--muted-foreground);
 }
 
 .digitopub-article-meta-list__value {
 	font-size: 0.9375rem;
-	color: #1a202c;
+	color: var(--foreground);
 	line-height: 1.5;
 }
 
@@ -1037,7 +1037,7 @@
 
 .digitopub-author-bio__text {
 	font-size: 0.9375rem;
-	color: #1a202c;
+	color: var(--foreground);
 	line-height: 1.65;
 }
 
@@ -1045,7 +1045,7 @@
 .digitopub-article-block--references .digitopub-article-block__body p {
 	margin-bottom: 0.75rem;
 	padding-bottom: 0.75rem;
-	border-bottom: 1px solid #d7dde5;
+	border-bottom: 1px solid var(--border);
 }
 
 .digitopub-article-block--references .digitopub-article-block__body p:last-child {
@@ -1057,7 +1057,7 @@
 /* Galley view header styling */
 .pkp_page_article .header_view {
 	background: var(--primary);
-	border-bottom: 1px solid #d7dde5;
+	border-bottom: 1px solid var(--border);
 	padding: 0.875rem 1.5rem;
 	display: flex;
 	align-items: center;
@@ -1065,7 +1065,7 @@
 }
 
 .pkp_page_article .header_view .return {
-	color: #ffffff;
+	color: var(--primary-foreground);
 	font-size: 0.9375rem;
 	font-weight: 600;
 	text-decoration: none;
@@ -1073,7 +1073,7 @@
 }
 
 .pkp_page_article .header_view .title {
-	color: #ffffff;
+	color: var(--primary-foreground);
 	font-size: 1rem;
 	font-weight: 600;
 	text-decoration: none;
@@ -1085,7 +1085,7 @@
 }
 
 .pkp_page_article .header_view .download {
-	color: #ffffff;
+	color: var(--primary-foreground);
 	font-size: 0.875rem;
 	font-weight: 600;
 	text-decoration: none;

@@ -1,0 +1,40 @@
+{
+ "_source": "OJS 3.5.0.2 lib/pkp/templates/frontend/pages/*.tpl (fetched 2026-10-19)",
+ "submissions": [
+  "include file=\"frontend/components/header.tpl\"",
+  "include file=\"frontend/components/breadcrumbs.tpl\"",
+  "translate key=\"about.submissions\"",
+  "translate key=\"author.submit.notAccepting\"",
+  "url page=\"submission\"",
+  "translate key=\"about.onlineSubmissions.newSubmission\"",
+  "url page=\"submissions\"",
+  "translate key=\"about.onlineSubmissions.viewSubmissions\"",
+  "translate key=\"about.onlineSubmissions.submissionActions\"",
+  "url page=\"login\"",
+  "translate key=\"about.onlineSubmissions.login\"",
+  "url page=\"user\" op=\"register\"",
+  "translate key=\"about.onlineSubmissions.register\"",
+  "translate key=\"about.onlineSubmissions.registrationRequired\"",
+  "translate key=\"about.authorGuidelines\"",
+  "include file=\"frontend/components/editLink.tpl\"",
+  "translate key=\"about.submissionPreparationChecklist\"",
+  "translate key=\"about.copyrightNotice\"",
+  "translate key=\"about.privacyStatement\"",
+  "include file=\"frontend/components/footer.tpl\""
+ ],
+ "contact": [
+  "include file=\"frontend/components/header.tpl\"",
+  "include file=\"frontend/components/breadcrumbs.tpl\"",
+  "translate key=\"about.contact\"",
+  "include file=\"frontend/components/editLink.tpl\"",
+  "translate key=\"about.contact.principalContact\"",
+  "translate key=\"about.contact.phone\"",
+  "translate key=\"about.contact.supportContact\"",
+  "include file=\"frontend/components/footer.tpl\""
+ ],
+ "navigationMenuItemViewContent": [
+  "include file=\"frontend/components/header.tpl\"",
+  "include file=\"frontend/components/breadcrumbs.tpl\"",
+  "include file=\"frontend/components/footer.tpl\""
+ ]
+}

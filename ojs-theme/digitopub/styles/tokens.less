@@ -37,32 +37,35 @@
 	--shadow-md: 0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent);
 	--nav-height: 4rem;
 
-	color-scheme: light;
+	// Body links: DigitoPub primary in light mode (see the dark value below).
+	--link: var(--primary);
+
+	color-scheme: light dark;
 }
 
-// Dark tokens (DigitoPub .dark values) are opt-in for now: nothing sets
-// data-sm-theme yet. The legacy page partials still hard-code light surfaces
-// (white cards), which rendered unreadable under auto dark mode. PR 2 migrates
-// them to tokens; then this block moves back under
-// @media (prefers-color-scheme: dark) and color-scheme becomes "light dark".
-:root[data-sm-theme="dark"] {
-	color-scheme: dark;
-	--background: oklch(0.12 0 0);
-	--foreground: oklch(0.98 0 0);
-	--card: oklch(0.15 0 0);
-	--card-foreground: oklch(0.98 0 0);
-	--primary: oklch(0.55 0.15 250);
-	--primary-foreground: oklch(1 0 0);
-	--secondary: oklch(0.2 0.02 250);
-	--secondary-foreground: oklch(0.98 0.01 250);
-	--muted: oklch(0.2 0 0);
-	--muted-foreground: oklch(0.65 0 0);
-	--accent: oklch(0.2 0.02 250);
-	--accent-foreground: oklch(0.98 0.01 250);
-	--destructive: oklch(0.45 0.2 27);
-	--border: oklch(0.25 0 0);
-	--input: oklch(0.25 0 0);
-	--ring: oklch(0.55 0.15 250);
+// Dark mode follows the system (DigitoPub .dark values). --link is lighter
+// than DigitoPub dark --primary, which measured 4.05:1 as link text on the
+// dark background (WCAG AA needs 4.5:1).
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: oklch(0.12 0 0);
+		--foreground: oklch(0.98 0 0);
+		--card: oklch(0.15 0 0);
+		--card-foreground: oklch(0.98 0 0);
+		--primary: oklch(0.55 0.15 250);
+		--primary-foreground: oklch(1 0 0);
+		--secondary: oklch(0.2 0.02 250);
+		--secondary-foreground: oklch(0.98 0.01 250);
+		--muted: oklch(0.2 0 0);
+		--muted-foreground: oklch(0.65 0 0);
+		--accent: oklch(0.2 0.02 250);
+		--accent-foreground: oklch(0.98 0.01 250);
+		--destructive: oklch(0.45 0.2 27);
+		--border: oklch(0.25 0 0);
+		--input: oklch(0.25 0 0);
+		--ring: oklch(0.55 0.15 250);
+		--link: oklch(0.72 0.12 250);
+	}
 }
 
 // ── Legacy aliases ───────────────────────────────────────────────────────────

@@ -62,7 +62,8 @@ describe("design tokens match DigitoPub (app/globals.css)", () => {
 
   it("dark tokens are identical (DigitoPub .dark == theme dark block)", () => {
     const dp = tokensIn(globals, /\n\.dark\s*\{/)
-    const sm = tokensIn(tokens, /:root\[data-sm-theme="dark"\]\s*\{/)
+    // Opt-in block (PR 1 mitigation) or the system-driven block (PR 2).
+    const sm = tokensIn(tokens, /:root\[data-sm-theme="dark"\]\s*\{|@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{/)
     for (const t of TOKENS) expect(sm[t], `--${t}`).toBe(dp[t])
   })
 
@@ -86,11 +87,12 @@ const ENTRY_IMPORTS = [
   "components/button.less",
   "components/navbar.less",
   "components/footer.less",
-  "legacy/site-home.less",
-  "legacy/journal-home.less",
+  "components/notice.less",
+  "pages/portal.less",
+  "pages/auth.less",
+  "pages/prose.less",
   "legacy/issue-preview.less",
   "legacy/article-preview.less",
-  "legacy/auth.less",
 ]
 
 describe("stylesheet structure", () => {

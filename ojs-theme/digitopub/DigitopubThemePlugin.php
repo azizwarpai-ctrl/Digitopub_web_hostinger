@@ -24,6 +24,13 @@ class DigitopubThemePlugin extends ThemePlugin
     public const DIGITOPUB_BASE_URL = 'https://digitopub.com';
 
     /**
+     * Largest cover (width x height) we decode for thumbnails. GD needs ~4
+     * bytes per pixel, and exhausting memory_limit is a fatal error that
+     * try/catch cannot catch, so bigger sources fall back to the original.
+     */
+    private const MAX_THUMB_SOURCE_PIXELS = 12000000;
+
+    /**
      * @copydoc Plugin::register()
      */
     public function register($category, $path, $mainContextId = null)
@@ -79,6 +86,8 @@ class DigitopubThemePlugin extends ThemePlugin
         // Load DigitoPub custom styles and scripts for the global redesign.
         $this->addStyle('digitopub-styles-' . $version, 'styles/digitopub.less');
         $this->addScript('digitopub-scripts', 'js/digitopub.js?v=' . $version);
+        // In-page table of contents for long content pages (progressive).
+        $this->addScript('digitopub-toc', 'js/toc.js?v=' . $version);
 
         // Make the site logo available in every frontend template so the
         // navbar brand is consistent regardless of journal context.
@@ -133,14 +142,14 @@ class DigitopubThemePlugin extends ThemePlugin
     public function assetVersion(): string
     {
         $parts = [filemtime(__FILE__) . ':' . filesize(__FILE__)];
-        $files = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator(__DIR__ . '/styles', \FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($files as $file) {
-            $parts[] = $file->getPathname() . ':' . $file->getMTime() . ':' . $file->getSize();
+        foreach (['styles', 'js'] as $dir) {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(__DIR__ . '/' . $dir, \FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($files as $file) {
+                $parts[] = $file->getPathname() . ':' . $file->getMTime() . ':' . $file->getSize();
+            }
         }
-        $script = __DIR__ . '/js/digitopub.js';
-        $parts[] = filemtime($script) . ':' . filesize($script);
         sort($parts);
 
         return substr(md5(implode('|', $parts)), 0, 8);
@@ -161,6 +170,126 @@ class DigitopubThemePlugin extends ThemePlugin
         $siteLogo = $site->getLocalizedData('pageHeaderTitleImage');
         if ($siteLogo) {
             $templateMgr->assign('digitopubSiteLogo', $siteLogo);
+        }
+
+        // Cover thumbnails (E3) only where covers render, so other pages pay
+        // no filesystem cost. Contract C2: [journalId => ['sm' => url, 'md' => url]].
+        $template = $args[1] ?? '';
+        if ($template === 'frontend/pages/indexJournal.tpl' || $template === 'frontend/pages/indexSite.tpl') {
+            $journals = $template === 'frontend/pages/indexSite.tpl'
+                ? ($templateMgr->getTemplateVars('journals') ?? [])
+                : array_filter([Application::get()->getRequest()->getContext()]);
+            $thumbs = [];
+            foreach ($journals as $journal) {
+                $thumb = $this->coverThumb((int) $journal->getId(), $journal->getLocalizedData('homepageImage'));
+                if ($thumb) {
+                    $thumbs[(int) $journal->getId()] = $thumb;
+                }
+            }
+            $templateMgr->assign('digitopubCoverThumbs', $thumbs);
+        }
+    }
+
+    /**
+     * WebP thumbnails of a journal's homepage image (E3): ['sm' => 480w url,
+     * 'md' => 960w url], or null to make templates fall back to the original.
+     * Implemented in task P2.
+     *
+     * @param array|null $image Localized homepageImage data (uploadName, ...)
+     */
+    public function coverThumb(int $journalId, $image): ?array
+    {
+        try {
+            if (empty($image) || !is_array($image) || empty($image['uploadName'])) {
+                return null;
+            }
+            // OJS 3.5: APP\file\PublicFileManager::getContextFilesPath() returns
+            // "<public_files_dir>/journals/<id>", relative to the OJS base dir.
+            $publicFileManager = new \APP\file\PublicFileManager();
+            $relPath = $publicFileManager->getContextFilesPath($journalId);
+            $dir = \PKP\core\Core::getBaseDir() . '/' . $relPath;
+            $baseUrl = Application::get()->getRequest()->getBaseUrl() . '/' . $relPath;
+            // basename() keeps a hostile setting value inside the journal dir.
+            return $this->buildThumbs($dir . '/' . basename((string) $image['uploadName']), $dir, $baseUrl);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Create (or reuse) dp-thumb-{W}-{mtime}.webp files for $source inside
+     * $dir. The mtime in the name busts caches when the cover is replaced.
+     * The source file is only ever read. Returns null on any failure.
+     */
+    private function buildThumbs(string $source, string $dir, string $baseUrl): ?array
+    {
+        try {
+            if (!is_file($source) || !function_exists('imagewebp') || !function_exists('imagecreatefromstring')) {
+                return null;
+            }
+            $mtime = filemtime($source);
+            if ($mtime === false) {
+                return null;
+            }
+            $urls = [];
+            $img = null;
+            foreach (['sm' => 480, 'md' => 960] as $key => $width) {
+                $name = "dp-thumb-{$width}-{$mtime}.webp";
+                $target = $dir . '/' . $name;
+                if (!is_file($target)) {
+                    if ($img === null) {
+                        // Cheap checks before the expensive decode, so a bad
+                        // dir or an oversized source costs nothing per request.
+                        if (!is_writable($dir)) {
+                            return null;
+                        }
+                        $size = @getimagesize($source);
+                        if (!$size || $size[0] * $size[1] > self::MAX_THUMB_SOURCE_PIXELS) {
+                            return null;
+                        }
+                        $data = file_get_contents($source);
+                        $img = $data === false ? false : @imagecreatefromstring($data);
+                        if (!$img) {
+                            return null;
+                        }
+                        imagepalettetotruecolor($img);
+                    }
+                    // Never upscale: use the source width when it is smaller.
+                    $w = min($width, imagesx($img));
+                    // Bicubic returns false on some GD builds (verified on the
+                    // SiteGround host), so fall back to bilinear.
+                    $dst = @imagescale($img, $w, -1, IMG_BICUBIC)
+                        ?: imagescale($img, $w, -1, IMG_BILINEAR_FIXED);
+                    if (!$dst) {
+                        return null;
+                    }
+                    imagealphablending($dst, false);
+                    imagesavealpha($dst, true);
+                    // Write to a temp file, then atomically rename the TEMP file.
+                    $tmp = $dir . '/dp-thumb-tmp-' . uniqid('', true) . '.webp';
+                    $ok = @imagewebp($dst, $tmp, 78);
+                    imagedestroy($dst);
+                    if (!$ok || !rename($tmp, $target)) {
+                        if (is_file($tmp)) {
+                            unlink($tmp);
+                        }
+                        return null;
+                    }
+                    // Drop stale thumbs of this width (other mtimes); prefix-matched only.
+                    foreach (glob($dir . "/dp-thumb-{$width}-*.webp") ?: [] as $old) {
+                        if (basename($old) !== $name) {
+                            unlink($old);
+                        }
+                    }
+                }
+                $urls[$key] = $baseUrl . '/' . $name;
+            }
+            if ($img) {
+                imagedestroy($img);
+            }
+            return $urls;
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 
