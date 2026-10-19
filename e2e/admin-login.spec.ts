@@ -1,8 +1,12 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
 
 // Issue #165 (PR A): admin login show/hide toggle + UI/UX polish.
 // Logged-out journey: clear any admin session the project may inject.
 test.use({ storageState: { cookies: [], origins: [] } })
+
+// Next.js App Router injects its own role="alert" route announcer on every page,
+// so look for the error inside the login form only.
+const loginAlert = (page: Page) => page.locator("form").getByRole("alert")
 
 const INVALID = { status: 401, contentType: "application/json", body: JSON.stringify({ error: "Invalid email or password" }) }
 
@@ -34,10 +38,10 @@ test.describe("admin login", () => {
     await page.locator("#password").fill("wrong-password")
     const submit = page.getByRole("button", { name: /sign in/i })
     await submit.dblclick()
-    await expect(page.getByRole("alert")).toContainText("Invalid email or password")
+    await expect(loginAlert(page)).toContainText("Invalid email or password")
     expect(calls).toBe(1)
     await page.locator("#password").press("x")
-    await expect(page.getByRole("alert")).toHaveCount(0)
+    await expect(loginAlert(page)).toHaveCount(0)
   })
 
   test("Enter in the password field submits the form", async ({ page }) => {
@@ -47,7 +51,7 @@ test.describe("admin login", () => {
     await page.locator("#email").fill("admin@example.com")
     await page.locator("#password").fill("wrong-password")
     await page.locator("#password").press("Enter")
-    await expect(page.getByRole("alert")).toBeVisible()
+    await expect(loginAlert(page)).toBeVisible()
     expect(calls).toBe(1)
   })
 
