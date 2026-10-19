@@ -55,6 +55,15 @@ test.describe("admin login", () => {
     expect(calls).toBe(1)
   })
 
+  test("tab order reaches Forgot password after the visibility toggle", async ({ page }) => {
+    await page.goto("/admin/login")
+    await page.locator("#password").focus()
+    await page.keyboard.press("Tab")
+    await expect(page.getByRole("switch", { name: "Toggle password visibility" })).toBeFocused()
+    await page.keyboard.press("Tab")
+    await expect(page.getByRole("link", { name: "Forgot password?" })).toBeFocused()
+  })
+
   test("fits a phone without horizontal scroll", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto("/admin/login")
