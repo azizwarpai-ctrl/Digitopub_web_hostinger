@@ -79,6 +79,8 @@ class DigitopubThemePlugin extends ThemePlugin
         // Load DigitoPub custom styles and scripts for the global redesign.
         $this->addStyle('digitopub-styles-' . $version, 'styles/digitopub.less');
         $this->addScript('digitopub-scripts', 'js/digitopub.js?v=' . $version);
+        // In-page table of contents for long content pages (progressive).
+        $this->addScript('digitopub-toc', 'js/toc.js?v=' . $version);
 
         // Make the site logo available in every frontend template so the
         // navbar brand is consistent regardless of journal context.
@@ -133,14 +135,14 @@ class DigitopubThemePlugin extends ThemePlugin
     public function assetVersion(): string
     {
         $parts = [filemtime(__FILE__) . ':' . filesize(__FILE__)];
-        $files = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator(__DIR__ . '/styles', \FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($files as $file) {
-            $parts[] = $file->getPathname() . ':' . $file->getMTime() . ':' . $file->getSize();
+        foreach (['styles', 'js'] as $dir) {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(__DIR__ . '/' . $dir, \FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($files as $file) {
+                $parts[] = $file->getPathname() . ':' . $file->getMTime() . ':' . $file->getSize();
+            }
         }
-        $script = __DIR__ . '/js/digitopub.js';
-        $parts[] = filemtime($script) . ':' . filesize($script);
         sort($parts);
 
         return substr(md5(implode('|', $parts)), 0, 8);
@@ -162,6 +164,35 @@ class DigitopubThemePlugin extends ThemePlugin
         if ($siteLogo) {
             $templateMgr->assign('digitopubSiteLogo', $siteLogo);
         }
+
+        // Cover thumbnails (E3) only where covers render, so other pages pay
+        // no filesystem cost. Contract C2: [journalId => ['sm' => url, 'md' => url]].
+        $template = $args[1] ?? '';
+        if ($template === 'frontend/pages/indexJournal.tpl' || $template === 'frontend/pages/indexSite.tpl') {
+            $journals = $template === 'frontend/pages/indexSite.tpl'
+                ? ($templateMgr->getTemplateVars('journals') ?? [])
+                : array_filter([Application::get()->getRequest()->getContext()]);
+            $thumbs = [];
+            foreach ($journals as $journal) {
+                $thumb = $this->coverThumb((int) $journal->getId(), $journal->getLocalizedData('homepageImage'));
+                if ($thumb) {
+                    $thumbs[(int) $journal->getId()] = $thumb;
+                }
+            }
+            $templateMgr->assign('digitopubCoverThumbs', $thumbs);
+        }
+    }
+
+    /**
+     * WebP thumbnails of a journal's homepage image (E3): ['sm' => 480w url,
+     * 'md' => 960w url], or null to make templates fall back to the original.
+     * Implemented in task P2.
+     *
+     * @param array|null $image Localized homepageImage data (uploadName, ...)
+     */
+    public function coverThumb(int $journalId, $image): ?array
+    {
+        return null;
     }
 
     /**

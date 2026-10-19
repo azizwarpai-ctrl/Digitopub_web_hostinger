@@ -1,11 +1,19 @@
-// ── DigitoPub theme entry: imports only ──
+/**
+ * plugins/themes/digitopub/styles/digitopub.less
+ *
+ * Entry point: imports only. SubmitManager shares DigitoPub's design system
+ * (tokens.less). Order matters: tokens, base, components, pages, then the
+ * editor-preview partials that still rely on legacy aliases.
+ */
+
 @import "tokens.less";
 @import "base.less";
 @import "components/button.less";
 @import "components/navbar.less";
 @import "components/footer.less";
-@import "legacy/site-home.less";
-@import "legacy/journal-home.less";
+@import "components/notice.less";
+@import "pages/portal.less";
+@import "pages/auth.less";
+@import "pages/prose.less";
 @import "legacy/issue-preview.less";
 @import "legacy/article-preview.less";
-@import "legacy/auth.less";

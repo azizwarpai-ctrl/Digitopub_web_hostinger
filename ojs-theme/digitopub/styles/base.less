@@ -111,3 +111,145 @@ body,
 		scroll-behavior: auto;
 	}
 }
+
+// ── Shared layout utilities (moved from legacy/site-home.less in PR 2) ──
+// .digitopub-container and .digitopub-transition() are mixins used by the
+// editor-preview partials (legacy/issue-preview.less); keep them here.
+
+
+// Container mixin
+.digitopub-container {
+	width: 100%;
+	max-width: none;
+	margin-left: auto;
+	margin-right: auto;
+	padding-left: 1.5rem;
+	padding-right: 1.5rem;
+	box-sizing: border-box;
+}
+
+// Transition mixin
+.digitopub-transition(@property: all, @duration: 200ms, @ease: ease) {
+	transition: @property @duration @ease;
+}
+
+// Animations
+@keyframes digitopub-fadeInUp {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes digitopub-shimmer {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+.digitopub-animate {
+	animation: digitopub-fadeInUp 600ms ease-out forwards;
+	opacity: 0;
+}
+
+.digitopub-skeleton {
+	background: linear-gradient(90deg, var(--muted) 25%, var(--secondary) 50%, var(--muted) 75%);
+	background-size: 200% 100%;
+	animation: digitopub-shimmer 1.5s infinite;
+	border-radius: var(--digitopub-radius);
+}
+
+// Hide Default Theme header globally; custom navbar replaces it
+.pkp_structure_head {
+	background: transparent;
+	border-bottom: none;
+	padding: 0;
+
+	.pkp_head_wrapper,
+	.pkp_site_nav_toggle,
+	.pkp_site_name_wrapper,
+	.pkp_site_nav_menu,
+	.pkp_navigation_primary_row,
+	.pkp_navigation_user_wrapper,
+	.pkp_navigation_search_wrapper {
+		display: none;
+	}
+}
+
+// Stretch homepage content area to full viewport width
+.pkp_page_index.pkp_op_index .pkp_structure_content,
+.pkp_page_index.pkp_op_index .pkp_structure_footer {
+	width: 100%;
+	max-width: none;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.pkp_page_index.pkp_op_index .pkp_structure_main {
+	float: none;
+	width: 100%;
+	max-width: none;
+	padding: 0;
+	margin: 0;
+
+	&:before,
+	&:after {
+		display: none;
+	}
+
+	&:first-child:last-child {
+		width: 100%;
+		margin: 0;
+
+		&:before,
+		&:after {
+			display: none;
+		}
+	}
+}
+
+// Stretch issue page content area to full viewport width
+.pkp_page_issue.pkp_op_current .pkp_structure_content,
+.pkp_page_issue.pkp_op_view .pkp_structure_content,
+.pkp_page_issue.pkp_op_archive .pkp_structure_content,
+.pkp_page_issue.pkp_op_current .pkp_structure_footer,
+.pkp_page_issue.pkp_op_view .pkp_structure_footer,
+.pkp_page_issue.pkp_op_archive .pkp_structure_footer {
+	width: 100%;
+	max-width: none;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.pkp_page_issue.pkp_op_current .pkp_structure_main,
+.pkp_page_issue.pkp_op_view .pkp_structure_main,
+.pkp_page_issue.pkp_op_archive .pkp_structure_main {
+	float: none;
+	width: 100%;
+	max-width: none;
+	padding: 0;
+	margin: 0;
+
+	&:before,
+	&:after {
+		display: none;
+	}
+
+	&:first-child:last-child {
+		width: 100%;
+		margin: 0;
+
+		&:before,
+		&:after {
+			display: none;
+		}
+	}
+}
+
