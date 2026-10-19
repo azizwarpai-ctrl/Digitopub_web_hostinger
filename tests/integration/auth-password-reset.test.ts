@@ -21,7 +21,7 @@ vi.mock('@/src/lib/db/config', () => {
 })
 
 import { Hono } from 'hono'
-import { authRouter } from '@/src/features/auth/server/route'
+import { authRouter, __flushResetLinksForTests } from '@/src/features/auth/server/route'
 import { prisma } from '@/src/lib/db/config'
 import { sendResetEmail } from '@/src/features/auth/server/send-reset-email'
 import { __resetRateLimiterForTests } from '@/src/lib/rate-limiter'
@@ -44,6 +44,8 @@ async function requestLink(app: ReturnType<typeof createApp>) {
   vi.mocked(prisma.adminUser.findUnique).mockResolvedValue(USER as any)
   const res = await post(app, '/api/auth/forgot-password', { email: USER.email })
   expect(res.status).toBe(200)
+  // The link is issued after the response (no timing hint), so wait for it.
+  await __flushResetLinksForTests()
   const link = new URL(vi.mocked(sendResetEmail).mock.calls.at(-1)![1] as string)
   const stored = vi.mocked(prisma.passwordResetToken.create).mock.calls.at(-1)![0] as any
   return { id: link.searchParams.get('id')!, token: link.searchParams.get('token')!, link, stored }
@@ -64,7 +66,8 @@ describe('Admin password recovery (#165)', () => {
     vi.mocked(prisma.adminUser.update).mockResolvedValue({} as any)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await __flushResetLinksForTests()
     vi.unstubAllEnvs()
   })
 
@@ -108,6 +111,25 @@ describe('Admin password recovery (#165)', () => {
       expect(call.data.used_at).toBeInstanceOf(Date)
     })
 
+    it('retires old links and creates the new one in a single transaction', async () => {
+      await requestLink(app)
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    })
+
+    it('issues no link in production when NEXT_PUBLIC_APP_URL is missing', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', '')
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.mocked(prisma.adminUser.findUnique).mockResolvedValue(USER as any)
+      const body = await (await post(app, '/api/auth/forgot-password', { email: USER.email })).json()
+      expect(body).toEqual({ success: true, message: GENERIC })
+      await __flushResetLinksForTests()
+      expect(errors).toHaveBeenCalled()
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled()
+      expect(sendResetEmail).not.toHaveBeenCalled()
+      errors.mockRestore()
+    })
+
     it('still answers generically when the email fails to send', async () => {
       vi.mocked(sendResetEmail).mockResolvedValue({ success: false, error: 'SMTP down' })
       vi.mocked(prisma.adminUser.findUnique).mockResolvedValue(USER as any)
@@ -149,6 +171,7 @@ describe('Admin password recovery (#165)', () => {
       const { id, token, stored } = await requestLink(app)
       vi.mocked(prisma.passwordResetToken.findUnique).mockResolvedValue({ id: BigInt(id), user_id: USER.id, used_at: null, ...stored.data } as any)
       vi.mocked(prisma.passwordResetToken.updateMany).mockResolvedValue({ count: 1 } as any)
+      vi.mocked(prisma.$transaction).mockClear() // ignore the issuing transaction
       const res = await post(app, '/api/auth/reset-password', { id, token, ...NEW })
       expect(res.status).toBe(200)
       const claim = claimCall(id)
@@ -194,8 +217,11 @@ describe('Admin password recovery (#165)', () => {
     it('rejects mismatched or too-short passwords before touching the database', async () => {
       const mismatch = await post(app, '/api/auth/reset-password', { id: '1', token: 'z'.repeat(43), password: 'abcdefg', confirmPassword: 'abcdefh' })
       const short = await post(app, '/api/auth/reset-password', { id: '1', token: 'z'.repeat(43), password: 'abc', confirmPassword: 'abc' })
+      const long = 'é'.repeat(37) // 74 bytes: past bcrypt's 72-byte input limit
+      const tooLong = await post(app, '/api/auth/reset-password', { id: '1', token: 'z'.repeat(43), password: long, confirmPassword: long })
       expect(mismatch.status).toBe(400)
       expect(short.status).toBe(400)
+      expect(tooLong.status).toBe(400)
       expect(prisma.passwordResetToken.findUnique).not.toHaveBeenCalled()
     })
   })

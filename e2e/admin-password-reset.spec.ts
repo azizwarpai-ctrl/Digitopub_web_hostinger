@@ -60,14 +60,19 @@ test.describe("admin password recovery", () => {
   })
 
   test("successful reset offers a log in link", async ({ page }) => {
-    await page.route("**/api/auth/reset-password", (route) =>
-      route.fulfill(json(200, { success: true, message: "Your password has been updated." })),
-    )
+    let sent: { id?: string; token?: string } = {}
+    await page.route("**/api/auth/reset-password", (route) => {
+      sent = route.request().postDataJSON()
+      return route.fulfill(json(200, { success: true, message: "Your password has been updated." }))
+    })
     await page.goto(RESET_URL)
+    // The secret is removed from the address bar but still used for the request.
+    await expect(page).toHaveURL(/\/admin\/reset-password$/)
     await page.locator("#password").fill("new-password-1")
     await page.locator("#confirmPassword").fill("new-password-1")
     await page.getByRole("button", { name: "Reset password" }).click()
     await expect(page.getByRole("link", { name: "Log in" })).toBeVisible()
+    expect(sent).toMatchObject({ id: "5", token: "a".repeat(43) })
   })
 
   test("an invalid-link response switches to the invalid-link state", async ({ page }) => {

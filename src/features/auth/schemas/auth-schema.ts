@@ -16,7 +16,11 @@ export const resetPasswordSchema = z
     // Row id from the emailed link (BigInt as a decimal string).
     id: z.string().regex(/^\d{1,19}$/, "Invalid reset link"),
     token: z.string().min(40, "Invalid reset link").max(128, "Invalid reset link"),
-    password: z.string().min(6, "Password must be at least 6 characters").max(128),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      // bcrypt ignores everything past 72 bytes.
+      .refine((p) => new TextEncoder().encode(p).length <= 72, "Password is too long"),
     confirmPassword: z.string().min(1, "Please confirm your password"),
   })
   .refine((data) => data.password === data.confirmPassword, {

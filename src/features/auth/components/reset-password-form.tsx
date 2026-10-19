@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,8 @@ import { resetPassword } from "@/src/features/auth/api/use-reset-password"
 
 const INVALID_LINK_MESSAGE = "This reset link is invalid or has expired."
 const MIN_PASSWORD_LENGTH = 6
+// bcrypt ignores everything past 72 bytes; the server rejects longer passwords.
+const MAX_PASSWORD_BYTES = 72
 
 function Shell({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -45,8 +47,13 @@ function Shell({ title, description, children }: { title: string; description?: 
 
 export function ResetPasswordForm() {
   const searchParams = useSearchParams()
-  const id = searchParams.get("id")
-  const token = searchParams.get("token")
+  // Captured once: the address bar is cleaned below, which also updates useSearchParams.
+  const [{ id, token }] = useState(() => ({ id: searchParams.get("id"), token: searchParams.get("token") }))
+
+  // Keep the secret out of browser history and later same-origin Referers.
+  useEffect(() => {
+    if (window.location.search) window.history.replaceState(null, "", window.location.pathname)
+  }, [])
 
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -93,6 +100,10 @@ export function ResetPasswordForm() {
     if (inFlight.current) return
     if (password.length < MIN_PASSWORD_LENGTH) {
       setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+      return
+    }
+    if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) {
+      setError("Password is too long")
       return
     }
     if (password !== confirmPassword) {

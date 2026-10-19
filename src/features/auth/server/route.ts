@@ -342,11 +342,54 @@ app.post("/resend-code", zValidator("json", resendCodeSchema), async (c) => {
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000
 const RESET_GENERIC_MESSAGE = "If an account exists for this email, a reset link has been sent."
 const RESET_INVALID_LINK = "This reset link is invalid or has expired."
-// Compared against when there is no account / no such link, so those paths
-// cost about as much as the real ones (no timing hint about accounts).
+// Compared against when there is no such link, so that path costs about as
+// much as a real one.
 const DUMMY_RESET_HASH = bcrypt.hashSync(randomBytes(16).toString("hex"), 10)
 
 class ResetLinkInvalidError extends Error {}
+
+const pendingResetLinks = new Set<Promise<void>>()
+/** Test helper: wait for reset links issued in the background. */
+export async function __flushResetLinksForTests(): Promise<void> {
+  await Promise.all(pendingResetLinks)
+}
+
+/** Create a single-use reset link for the user and email it. Never throws, never logs the link. */
+async function issueResetLink(userId: bigint, email: string): Promise<void> {
+  try {
+    const configuredUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (!configuredUrl && process.env.NODE_ENV === "production") {
+      console.error("[PasswordReset] NEXT_PUBLIC_APP_URL is not set; no reset link issued")
+      return
+    }
+    const appUrl = (configuredUrl || "http://localhost:3000").replace(/\/$/, "")
+
+    const secret = randomBytes(32).toString("base64url")
+    const tokenHash = await bcrypt.hash(secret, 10)
+    const now = new Date()
+    // One live link per user: issuing a new one retires the old ones.
+    const row = await prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.updateMany({
+        where: { user_id: userId, used_at: null },
+        data: { used_at: now },
+      })
+      return tx.passwordResetToken.create({
+        data: { user_id: userId, token_hash: tokenHash, expires_at: new Date(now.getTime() + RESET_TOKEN_TTL_MS) },
+      })
+    })
+
+    const resetUrl = `${appUrl}/admin/reset-password?id=${row.id.toString()}&token=${encodeURIComponent(secret)}`
+    // Always email (never console), and never log the link or token.
+    const result = await sendResetEmail(email, resetUrl)
+    if (!result.success) {
+      console.error(`[PasswordReset] Failed to send reset email to ${maskEmail(email)}: ${result.error}`)
+      return
+    }
+    console.log(`[PasswordReset] Reset link issued for ${maskEmail(email)}`)
+  } catch (error) {
+    console.error(`[PasswordReset] Failed to issue reset link for ${maskEmail(email)}:`, error instanceof Error ? error.message : error)
+  }
+}
 
 // POST /auth/forgot-password
 app.post("/forgot-password", zValidator("json", forgotPasswordSchema), async (c) => {
@@ -360,38 +403,12 @@ app.post("/forgot-password", zValidator("json", forgotPasswordSchema), async (c)
 
   try {
     const user = await prisma.adminUser.findUnique({ where: { email } })
-    if (!user) {
-      await bcrypt.compare(email, DUMMY_RESET_HASH)
-      return c.json({ success: true, message: RESET_GENERIC_MESSAGE }, 200)
+    // Issued after the response, so known and unknown emails take the same time.
+    if (user) {
+      const pending = issueResetLink(user.id, user.email)
+      pendingResetLinks.add(pending)
+      void pending.finally(() => pendingResetLinks.delete(pending))
     }
-
-    const secret = randomBytes(32).toString("base64url")
-    const tokenHash = await bcrypt.hash(secret, 10)
-
-    // One live link per user: issuing a new one retires the old ones.
-    await prisma.passwordResetToken.updateMany({
-      where: { user_id: user.id, used_at: null },
-      data: { used_at: new Date() },
-    })
-    const row = await prisma.passwordResetToken.create({
-      data: { user_id: user.id, token_hash: tokenHash, expires_at: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
-    })
-
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")
-    const resetUrl = `${appUrl}/admin/reset-password?id=${row.id.toString()}&token=${encodeURIComponent(secret)}`
-
-    // Not awaited: SMTP latency would otherwise reveal that the account exists.
-    // Always email (never console), and never log the link or token.
-    void sendResetEmail(user.email, resetUrl)
-      .then((result) => {
-        if (!result.success) {
-          console.error(`[PasswordReset] Failed to send reset email to ${maskEmail(user.email)}: ${result.error}`)
-        }
-      })
-      .catch((error: unknown) => {
-        console.error(`[PasswordReset] Failed to send reset email to ${maskEmail(user.email)}:`, error instanceof Error ? error.message : error)
-      })
-    console.log(`[PasswordReset] Reset link issued for ${maskEmail(user.email)}`)
   } catch (error) {
     // Still answer generically: an error must not reveal that the account exists.
     console.error("[PasswordReset] forgot-password failed:", error instanceof Error ? error.message : error)
