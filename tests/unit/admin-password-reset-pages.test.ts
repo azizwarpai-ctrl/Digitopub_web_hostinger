@@ -34,7 +34,7 @@ describe("admin forgot-password page", () => {
 
 describe("admin reset-password page", () => {
   async function render() {
-    const { ResetPasswordForm } = await import("@/app/admin/reset-password/page")
+    const { ResetPasswordForm } = await import("@/src/features/auth/components/reset-password-form")
     return renderToStaticMarkup(createElement(ResetPasswordForm))
   }
 
