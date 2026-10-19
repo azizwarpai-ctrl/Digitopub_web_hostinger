@@ -6,11 +6,12 @@ import { renderToStaticMarkup } from "react-dom/server"
 // (Vitest runs in Node, no DOM); interaction is covered by
 // e2e/admin-password-reset.spec.ts in CI.
 
-const state = vi.hoisted(() => ({ query: "" }))
+const state = vi.hoisted(() => ({ query: "", pathname: "/admin/login" }))
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(state.query),
+  usePathname: () => state.pathname,
 }))
 
 const VALID_QUERY = "id=5&token=" + "a".repeat(43)
@@ -69,5 +70,20 @@ describe("admin login page", () => {
     const html = renderToStaticMarkup(createElement(AdminLoginPage))
     expect(html).toContain('href="/admin/forgot-password"')
     expect(html).toContain("Forgot password?")
+  })
+})
+
+// The admin layout wraps non-auth pages in the dashboard shell, whose session
+// check bounces logged-out visitors to /admin/login.
+vi.mock("@/components/admin-sidebar", () => ({ AdminSidebar: () => createElement("nav", null, "DASHBOARD-SHELL") }))
+vi.mock("@/components/admin-header", () => ({ AdminHeader: () => null }))
+
+describe("admin layout", () => {
+  it.each(["/admin/forgot-password", "/admin/reset-password"])("renders %s without the dashboard shell", async (path) => {
+    state.pathname = path
+    const { default: Layout } = await import("@/app/admin/layout")
+    const html = renderToStaticMarkup(createElement(Layout, null, createElement("p", null, "PAGE")))
+    expect(html).toContain("PAGE")
+    expect(html).not.toContain("DASHBOARD-SHELL")
   })
 })
