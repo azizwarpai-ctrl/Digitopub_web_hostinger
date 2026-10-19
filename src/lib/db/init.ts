@@ -119,6 +119,29 @@ export async function initializeDatabase() {
         console.error('[DB Init] Failed to create verification_codes table:', errorMsg)
       }
 
+      // Admin password-reset links (#165); mirrors migration 20261019120000.
+      try {
+        await prisma.$executeRaw(Prisma.sql`
+          CREATE TABLE IF NOT EXISTS \`password_reset_tokens\` (
+            \`id\` BIGINT NOT NULL AUTO_INCREMENT,
+            \`user_id\` BIGINT NOT NULL,
+            \`token_hash\` VARCHAR(72) NOT NULL,
+            \`expires_at\` DATETIME(3) NOT NULL,
+            \`used_at\` DATETIME(3) NULL,
+            \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            INDEX \`password_reset_tokens_user_id_idx\`(\`user_id\`),
+            INDEX \`password_reset_tokens_expires_at_idx\`(\`expires_at\`),
+            PRIMARY KEY (\`id\`),
+            CONSTRAINT \`password_reset_tokens_user_id_fkey\` FOREIGN KEY (\`user_id\`)
+              REFERENCES \`admin_users\`(\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+          ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        `)
+        console.log('[DB Init] Applied schema patch: Synchronized password_reset_tokens table')
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e)
+        console.error('[DB Init] Failed to create password_reset_tokens table:', errorMsg)
+      }
+
       try {
         await prisma.$executeRaw(
           Prisma.sql`ALTER TABLE \`verification_codes\` MODIFY COLUMN \`code\` VARCHAR(72) NOT NULL`
