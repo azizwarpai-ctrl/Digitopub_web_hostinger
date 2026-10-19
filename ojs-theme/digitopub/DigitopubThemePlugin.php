@@ -192,7 +192,89 @@ class DigitopubThemePlugin extends ThemePlugin
      */
     public function coverThumb(int $journalId, $image): ?array
     {
-        return null;
+        try {
+            if (empty($image) || !is_array($image) || empty($image['uploadName'])) {
+                return null;
+            }
+            // OJS 3.5: APP\file\PublicFileManager::getContextFilesPath() returns
+            // "<public_files_dir>/journals/<id>", relative to the OJS base dir.
+            $publicFileManager = new \APP\file\PublicFileManager();
+            $relPath = $publicFileManager->getContextFilesPath($journalId);
+            $dir = \PKP\core\Core::getBaseDir() . '/' . $relPath;
+            $baseUrl = Application::get()->getRequest()->getBaseUrl() . '/' . $relPath;
+            // basename() keeps a hostile setting value inside the journal dir.
+            return $this->buildThumbs($dir . '/' . basename((string) $image['uploadName']), $dir, $baseUrl);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Create (or reuse) dp-thumb-{W}-{mtime}.webp files for $source inside
+     * $dir. The mtime in the name busts caches when the cover is replaced.
+     * The source file is only ever read. Returns null on any failure.
+     */
+    private function buildThumbs(string $source, string $dir, string $baseUrl): ?array
+    {
+        try {
+            if (!is_file($source) || !function_exists('imagewebp') || !function_exists('imagecreatefromstring')) {
+                return null;
+            }
+            $mtime = filemtime($source);
+            if ($mtime === false) {
+                return null;
+            }
+            $urls = [];
+            $img = null;
+            foreach (['sm' => 480, 'md' => 960] as $key => $width) {
+                $name = "dp-thumb-{$width}-{$mtime}.webp";
+                $target = $dir . '/' . $name;
+                if (!is_file($target)) {
+                    if ($img === null) {
+                        $data = file_get_contents($source);
+                        $img = $data === false ? false : @imagecreatefromstring($data);
+                        if (!$img) {
+                            return null;
+                        }
+                        imagepalettetotruecolor($img);
+                    }
+                    // Never upscale: use the source width when it is smaller.
+                    $w = min($width, imagesx($img));
+                    // Bicubic returns false on some GD builds (verified on the
+                    // SiteGround host), so fall back to bilinear.
+                    $dst = @imagescale($img, $w, -1, IMG_BICUBIC)
+                        ?: imagescale($img, $w, -1, IMG_BILINEAR_FIXED);
+                    if (!$dst) {
+                        return null;
+                    }
+                    imagealphablending($dst, false);
+                    imagesavealpha($dst, true);
+                    // Write to a temp file, then atomically rename the TEMP file.
+                    $tmp = $dir . '/dp-thumb-tmp-' . uniqid('', true) . '.webp';
+                    $ok = imagewebp($dst, $tmp, 78);
+                    imagedestroy($dst);
+                    if (!$ok || !rename($tmp, $target)) {
+                        if (is_file($tmp)) {
+                            unlink($tmp);
+                        }
+                        return null;
+                    }
+                    // Drop stale thumbs of this width (other mtimes); prefix-matched only.
+                    foreach (glob($dir . "/dp-thumb-{$width}-*.webp") ?: [] as $old) {
+                        if (basename($old) !== $name) {
+                            unlink($old);
+                        }
+                    }
+                }
+                $urls[$key] = $baseUrl . '/' . $name;
+            }
+            if ($img) {
+                imagedestroy($img);
+            }
+            return $urls;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
