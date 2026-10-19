@@ -5,6 +5,29 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 })
 
+// ─── Admin password recovery (#165) ─────────────────────────────────────────
+
+export const forgotPasswordSchema = z.object({
+  email: z.email("Invalid email address"),
+})
+
+export const resetPasswordSchema = z
+  .object({
+    // Row id from the emailed link (BigInt as a decimal string).
+    id: z.string().regex(/^\d{1,19}$/, "Invalid reset link"),
+    token: z.string().min(40, "Invalid reset link").max(128, "Invalid reset link"),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      // bcrypt ignores everything past 72 bytes.
+      .refine((p) => new TextEncoder().encode(p).length <= 72, "Password is too long"),
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
+
 export const registerSchema = z.object({
   // Personal info (Step 1)
   firstName: z.string().min(1, "First name is required").max(100),

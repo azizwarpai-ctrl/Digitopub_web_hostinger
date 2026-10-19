@@ -9,7 +9,9 @@ import {
   generateOTPCode,
   OtpDeliveryUnconfiguredError,
 } from "@/src/features/auth/utils/auth-utils.server"
-import { loginSchema } from "../schemas/auth-schema"
+import { loginSchema, forgotPasswordSchema, resetPasswordSchema } from "../schemas/auth-schema"
+import { randomBytes } from "node:crypto"
+import { sendResetEmail } from "./send-reset-email"
 import { verifyPassword, getUserById } from "@/src/lib/db/users"
 import { createSession, getSession, destroySession } from "@/src/lib/db/auth"
 import { prisma } from "@/src/lib/db/config"
@@ -19,6 +21,9 @@ import {
   ADMIN_LOGIN_RATE_LIMIT,
   OTP_RESEND_RATE_LIMIT,
   OTP_VERIFY_RATE_LIMIT,
+  PASSWORD_RESET_EMAIL_RATE_LIMIT,
+  PASSWORD_RESET_IP_RATE_LIMIT,
+  PASSWORD_RESET_CONSUME_RATE_LIMIT,
 } from "@/src/lib/rate-limiter-configs"
 import { clientIpFromHeaders } from "@/src/lib/ip-hash"
 
@@ -328,6 +333,136 @@ app.post("/resend-code", zValidator("json", resendCodeSchema), async (c) => {
 
 
 // POST /auth/logout
+// ─── Admin password recovery (#165) ──────────────────────────────────────────
+//
+// Link = /admin/reset-password?id=<row id>&token=<32-byte secret, base64url>.
+// Only bcrypt(secret) is stored; rows expire after 15 minutes and are
+// single-use. Responses never reveal whether an account exists.
+
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000
+const RESET_GENERIC_MESSAGE = "If an account exists for this email, a reset link has been sent."
+const RESET_INVALID_LINK = "This reset link is invalid or has expired."
+// Compared against when there is no such link, so that path costs about as
+// much as a real one.
+const DUMMY_RESET_HASH = bcrypt.hashSync(randomBytes(16).toString("hex"), 10)
+
+class ResetLinkInvalidError extends Error {}
+
+const pendingResetLinks = new Set<Promise<void>>()
+/** Test helper: wait for reset links issued in the background. */
+export async function __flushResetLinksForTests(): Promise<void> {
+  await Promise.all(pendingResetLinks)
+}
+
+/** Create a single-use reset link for the user and email it. Never throws, never logs the link. */
+async function issueResetLink(userId: bigint, email: string): Promise<void> {
+  try {
+    const configuredUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (!configuredUrl && process.env.NODE_ENV === "production") {
+      console.error("[PasswordReset] NEXT_PUBLIC_APP_URL is not set; no reset link issued")
+      return
+    }
+    const appUrl = (configuredUrl || "http://localhost:3000").replace(/\/$/, "")
+
+    const secret = randomBytes(32).toString("base64url")
+    const tokenHash = await bcrypt.hash(secret, 10)
+    const now = new Date()
+    // One live link per user: issuing a new one retires the old ones.
+    const row = await prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.updateMany({
+        where: { user_id: userId, used_at: null },
+        data: { used_at: now },
+      })
+      return tx.passwordResetToken.create({
+        data: { user_id: userId, token_hash: tokenHash, expires_at: new Date(now.getTime() + RESET_TOKEN_TTL_MS) },
+      })
+    })
+
+    const resetUrl = `${appUrl}/admin/reset-password?id=${row.id.toString()}&token=${encodeURIComponent(secret)}`
+    // Always email (never console), and never log the link or token.
+    const result = await sendResetEmail(email, resetUrl)
+    if (!result.success) {
+      console.error(`[PasswordReset] Failed to send reset email to ${maskEmail(email)}: ${result.error}`)
+      return
+    }
+    console.log(`[PasswordReset] Reset link issued for ${maskEmail(email)}`)
+  } catch (error) {
+    console.error(`[PasswordReset] Failed to issue reset link for ${maskEmail(email)}:`, error instanceof Error ? error.message : error)
+  }
+}
+
+// POST /auth/forgot-password
+app.post("/forgot-password", zValidator("json", forgotPasswordSchema), async (c) => {
+  const email = c.req.valid("json").email.trim()
+
+  const ip = clientIpFromHeaders(c.req.raw.headers)
+  const byIp = checkRateLimit(ip, PASSWORD_RESET_IP_RATE_LIMIT)
+  if (!byIp.allowed) return tooManyAttempts(c, byIp)
+  const byEmail = checkRateLimit(email.toLowerCase(), PASSWORD_RESET_EMAIL_RATE_LIMIT)
+  if (!byEmail.allowed) return tooManyAttempts(c, byEmail)
+
+  try {
+    const user = await prisma.adminUser.findUnique({ where: { email } })
+    // Issued after the response, so known and unknown emails take the same time.
+    if (user) {
+      const pending = issueResetLink(user.id, user.email)
+      pendingResetLinks.add(pending)
+      void pending.finally(() => pendingResetLinks.delete(pending))
+    }
+  } catch (error) {
+    // Still answer generically: an error must not reveal that the account exists.
+    console.error("[PasswordReset] forgot-password failed:", error instanceof Error ? error.message : error)
+  }
+
+  return c.json({ success: true, message: RESET_GENERIC_MESSAGE }, 200)
+})
+
+// POST /auth/reset-password
+app.post("/reset-password", zValidator("json", resetPasswordSchema), async (c) => {
+  const rate = checkRateLimit(clientIpFromHeaders(c.req.raw.headers), PASSWORD_RESET_CONSUME_RATE_LIMIT)
+  if (!rate.allowed) return tooManyAttempts(c, rate)
+
+  const { id, token, password } = c.req.valid("json")
+  const invalidLink = () => c.json({ success: false, error: RESET_INVALID_LINK }, 400)
+
+  try {
+    const row = await prisma.passwordResetToken.findUnique({ where: { id: BigInt(id) } })
+    if (!row) {
+      await bcrypt.compare(token, DUMMY_RESET_HASH)
+      return invalidLink()
+    }
+    // Compare first, then check state, so every failure costs the same.
+    const secretMatches = await bcrypt.compare(token, row.token_hash)
+    if (!secretMatches || row.used_at || row.expires_at.getTime() <= Date.now()) {
+      return invalidLink()
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10)
+    const now = new Date()
+    await prisma.$transaction(async (tx) => {
+      // Atomic claim: of two concurrent uses of one link, only one updates the row.
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: row.id, used_at: null, expires_at: { gt: now } },
+        data: { used_at: now },
+      })
+      if (claimed.count !== 1) throw new ResetLinkInvalidError()
+      await tx.adminUser.update({ where: { id: row.user_id }, data: { password_hash: passwordHash } })
+      // Retire any other open links for this user.
+      await tx.passwordResetToken.updateMany({
+        where: { user_id: row.user_id, used_at: null },
+        data: { used_at: now },
+      })
+    })
+
+    console.log(`[PasswordReset] Password reset completed for admin user ${row.user_id.toString()}`)
+    return c.json({ success: true, message: "Your password has been reset. You can now log in." }, 200)
+  } catch (error) {
+    if (error instanceof ResetLinkInvalidError) return invalidLink()
+    console.error("[PasswordReset] reset-password failed:", error instanceof Error ? error.message : error)
+    return c.json({ success: false, error: "Could not reset your password. Please try again." }, 500)
+  }
+})
+
 app.post("/logout", async (c) => {
   try {
     await destroySession()

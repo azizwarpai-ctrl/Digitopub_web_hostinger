@@ -11,6 +11,8 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 const AUTH_PAGES = [
   "/admin/login",
   "/admin/verify-code",
+  "/admin/forgot-password",
+  "/admin/reset-password",
 ]
 
 export default function AdminRootLayout({

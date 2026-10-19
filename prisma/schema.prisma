@@ -29,6 +29,7 @@ model AdminUser {
   subscription         Subscription?
   updated_settings     SystemSetting[]    @relation("UpdatedBy")
   uploaded_audios      ArticleAudio[]     @relation("UploadedBy")
+  password_reset_tokens PasswordResetToken[]
 
   @@index([email])
   @@map("admin_users")
@@ -234,6 +235,23 @@ model Solution {
 
   @@index([is_published, display_order])
   @@map("solutions")
+}
+
+/// Admin password-reset links (#165). Separate from verification_codes so the
+/// login-OTP flow is untouched. Only a bcrypt hash of the link secret is
+/// stored; rows are single-use (used_at) and expire after 15 minutes.
+model PasswordResetToken {
+  id         BigInt    @id @default(autoincrement())
+  user_id    BigInt
+  token_hash String    @db.VarChar(72)
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+  user       AdminUser @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("password_reset_tokens")
 }
 
 model VerificationCode {

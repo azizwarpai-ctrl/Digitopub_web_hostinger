@@ -13,6 +13,8 @@ export const PUBLIC_ROUTES = [
   "/register",
   "/admin/login",
   "/admin/verify-code",
+  "/admin/forgot-password",
+  "/admin/reset-password",
   // UIET-P1: public-user self-service pages. Not behind admin auth.
   "/account/stats",
   "/account/data",

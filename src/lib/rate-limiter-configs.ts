@@ -37,6 +37,26 @@ export const OTP_VERIFY_RATE_LIMIT = {
   keyPrefix: "otpverify",
 } as const
 
+// ─── Admin password recovery (#165) ──────────────────────────────────
+/** Reset-link requests: 3 per email per hour, whatever the IP (key = email) */
+export const PASSWORD_RESET_EMAIL_RATE_LIMIT = {
+  maxRequests: 3,
+  windowMs: 60 * 60 * 1000,
+  keyPrefix: "pwreset:email",
+} as const
+/** Reset-link requests: 10 per IP per hour, across emails */
+export const PASSWORD_RESET_IP_RATE_LIMIT = {
+  maxRequests: 10,
+  windowMs: 60 * 60 * 1000,
+  keyPrefix: "pwreset:ip",
+} as const
+/** Reset-link consumption: 15 attempts per IP per 15 minutes */
+export const PASSWORD_RESET_CONSUME_RATE_LIMIT = {
+  maxRequests: 15,
+  windowMs: 15 * 60 * 1000,
+  keyPrefix: "pwreset:consume",
+} as const
+
 // ─── Journal hosting request (hotfix A5) ─────────────────────────────
 /** Journal hosting request form: 3 per IP per 15 minutes */
 export const JOURNAL_HOSTING_RATE_LIMIT = {
