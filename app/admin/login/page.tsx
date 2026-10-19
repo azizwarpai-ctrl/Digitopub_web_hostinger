@@ -113,6 +113,12 @@ export default function AdminLoginPage() {
                     value={password}
                     onChange={editField(setPassword)}
                   />
+                  <Link
+                    href="/admin/forgot-password"
+                    className="justify-self-end text-sm text-muted-foreground underline-offset-4 hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
                 {error && (
                   <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
