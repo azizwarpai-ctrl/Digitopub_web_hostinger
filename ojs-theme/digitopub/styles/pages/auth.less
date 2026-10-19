@@ -1,1 +1,317 @@
-// ── pages/auth (built in SubmitManager redesign PR 2) ──
+// ── pages/auth (login, register, lost password; SubmitManager redesign PR 2) ──
+// One focused form column. Tokens only. Prefixed with .digitopub-auth-page to out-specify the default theme.
+
+.digitopub-auth-page {
+	background: var(--muted);
+	color: var(--foreground);
+	padding: 3rem 1rem 4rem;
+
+	.dp-auth {
+		display: block;
+		max-width: 28rem;
+		margin: 0 auto;
+	}
+
+	.dp-auth--wide {
+		max-width: 36rem;
+	}
+
+	.dp-auth__card {
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-sm);
+		padding: 2rem;
+	}
+
+	h1.dp-auth__title {
+		margin: 0 0 0.5rem;
+		font: 600 1.75rem/1.2 var(--font-sans);
+		color: var(--foreground);
+		letter-spacing: -0.01em;
+	}
+
+	.dp-auth__lead {
+		margin: 0 0 1.5rem;
+		font-size: 1rem;
+		line-height: 1.5;
+		color: var(--muted-foreground);
+	}
+
+	// ── Fields ──
+	.dp-auth__fields {
+		border: 0;
+		margin: 0;
+		padding: 0;
+		min-width: 0;
+	}
+
+	.dp-auth__field {
+		margin: 0 0 1.25rem;
+		padding: 0;
+		border: 0;
+	}
+
+	.dp-auth__label,
+	.dp-auth__form label,
+	.dp-auth__form legend {
+		display: block;
+		margin: 0 0 0.375rem;
+		padding: 0;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		line-height: 1.4;
+		color: var(--foreground);
+	}
+
+	.dp-auth__form .required {
+		color: var(--destructive);
+		margin-left: 0.125rem;
+	}
+
+	.dp-auth__form fieldset {
+		border: 0;
+		margin: 0 0 1.25rem;
+		padding: 0;
+		min-width: 0;
+	}
+
+	.dp-auth__form fieldset legend {
+		font-size: 1rem;
+		font-weight: 600;
+		margin-bottom: 0.75rem;
+	}
+
+	.dp-auth__form .fields > div,
+	.dp-auth__form .fields .label {
+		margin-bottom: 1.25rem;
+	}
+
+	.dp-auth__control {
+		position: relative;
+	}
+
+	.dp-auth__form input[type="text"],
+	.dp-auth__form input[type="email"],
+	.dp-auth__form input[type="password"],
+	.dp-auth__form input[type="url"],
+	.dp-auth__form input[type="tel"],
+	.dp-auth__form select,
+	.dp-auth__form textarea,
+	.dp-auth__input {
+		display: block;
+		width: 100%;
+		max-width: none;
+		height: 2.75rem;
+		margin: 0;
+		padding: 0 0.875rem;
+		font: 400 1rem/1.4 var(--font-sans);
+		color: var(--foreground);
+		background: var(--background);
+		border: 1px solid var(--input);
+		border-radius: var(--radius-md);
+		box-shadow: none;
+		box-sizing: border-box;
+		transition: border-color 150ms ease, box-shadow 150ms ease;
+	}
+
+	.dp-auth__form textarea {
+		height: auto;
+		min-height: 6rem;
+		padding: 0.625rem 0.875rem;
+	}
+
+	.dp-auth__form input::placeholder,
+	.dp-auth__form textarea::placeholder {
+		color: var(--muted-foreground);
+	}
+
+	.dp-auth__form input[type="text"]:focus,
+	.dp-auth__form input[type="email"]:focus,
+	.dp-auth__form input[type="password"]:focus,
+	.dp-auth__form input[type="url"]:focus,
+	.dp-auth__form input[type="tel"]:focus,
+	.dp-auth__form select:focus,
+	.dp-auth__form textarea:focus,
+	.dp-auth__input:focus {
+		outline: none;
+		border-color: var(--ring);
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 30%, transparent);
+	}
+
+	.dp-auth__input--has-toggle {
+		padding-right: 3rem;
+	}
+
+	.dp-auth__toggle {
+		position: absolute;
+		top: 0;
+		right: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius-md);
+		color: var(--muted-foreground);
+		cursor: pointer;
+
+		&:hover {
+			color: var(--foreground);
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--ring);
+			outline-offset: -2px;
+		}
+	}
+
+	// ── Checkboxes and the remember / forgot row ──
+	.dp-auth__form .dp-auth__check,
+	.dp-auth__form .optin label {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin: 0 0 0.5rem;
+		font-size: 0.9375rem;
+		font-weight: 400;
+		line-height: 1.4;
+		color: var(--foreground);
+		cursor: pointer;
+	}
+
+	.dp-auth__form input[type="checkbox"],
+	.dp-auth__form input[type="radio"] {
+		flex: none;
+		width: 1rem;
+		height: 1rem;
+		margin: 0.15rem 0 0;
+		accent-color: var(--primary);
+	}
+
+	.dp-auth__row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem 1rem;
+		margin: 0 0 1.5rem;
+
+		.dp-auth__check {
+			margin: 0;
+		}
+	}
+
+	// ── Links ──
+	.dp-auth__link,
+	.dp-auth__switch a,
+	.dp-auth__form a {
+		color: var(--link, var(--primary));
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
+
+		&:hover {
+			text-decoration-thickness: 2px;
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--ring);
+			outline-offset: 2px;
+			border-radius: var(--radius-sm);
+		}
+	}
+
+	.dp-auth__row .dp-auth__link {
+		font-size: 0.9375rem;
+	}
+
+	.dp-auth__switch {
+		margin: 1.5rem 0 0;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--border);
+		text-align: center;
+		font-size: 0.9375rem;
+		color: var(--muted-foreground);
+	}
+
+	// ── Buttons ──
+	.digitopub-btn {
+		height: 2.75rem;
+		font-size: 1rem;
+		font-weight: 600;
+		margin-top: 0.25rem;
+	}
+
+	.digitopub-btn--block {
+		width: 100%;
+	}
+
+	.digitopub-btn__spinner {
+		display: none;
+		width: 1rem;
+		height: 1rem;
+		border: 2px solid color-mix(in oklch, var(--primary-foreground) 40%, transparent);
+		border-top-color: var(--primary-foreground);
+		border-radius: 50%;
+		animation: digitopub-spin 0.8s linear infinite;
+	}
+
+	.digitopub-btn.is-loading {
+		opacity: 0.75;
+		cursor: not-allowed;
+
+		.digitopub-btn__spinner {
+			display: inline-block;
+		}
+	}
+
+	// ── Errors and messages (OJS markup kept, restyled) ──
+	.pkp_form_error,
+	.cmp_notification,
+	.dp-auth__message {
+		margin: 0 0 1.25rem;
+		padding: 0.75rem 1rem;
+		font-size: 0.9375rem;
+		line-height: 1.5;
+		color: var(--destructive);
+		background: color-mix(in oklch, var(--destructive) 6%, var(--card));
+		border: 1px solid color-mix(in oklch, var(--destructive) 40%, var(--border));
+		border-radius: var(--radius-md);
+	}
+
+	.cmp_notification.dp-auth__message {
+		color: var(--foreground);
+		background: var(--muted);
+		border-color: var(--border);
+	}
+
+	.pkp_form_error ul {
+		margin: 0.25rem 0 0;
+		padding-left: 1.25rem;
+	}
+
+	.pkp_form_error a {
+		color: inherit;
+	}
+
+	.dp-auth__form .error,
+	.dp-auth__form .pkp_form_error {
+		color: var(--destructive);
+	}
+
+	// ── Narrow screens ──
+	@media (max-width: 480px) {
+		padding-top: 1.5rem;
+
+		.dp-auth__card {
+			padding: 1.25rem;
+		}
+	}
+}
+
+@keyframes digitopub-spin {
+	to { transform: rotate(360deg); }
+}
