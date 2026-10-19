@@ -4,12 +4,14 @@
  * Copyright (c) 2026 DigitoPub
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
- * DigitoPub journal landing page — submission portal.
+ * DigitoPub journal landing page: a focused submission portal.
  *
  * #183: SubmitManager is used only for submission, editorial workflow and
  * storage. This page shows no issues or articles; readers are sent to the
- * journal on DigitoPub (https://digitopub.com/journals/{path}), the single
- * publishing surface. Reuses the Phase 3.1 hero/section/sidebar styles.
+ * journal on DigitoPub (https://digitopub.com/journals/{path}).
+ * PR 2 (P3): one primary action (New submission), a three-step path and a quiet
+ * journal facts list. Styles: styles/pages/portal.less. The cover comes from
+ * $digitopubCoverThumbs (WebP thumbnails) with the original upload as fallback.
  *}
 {include file="frontend/components/header.tpl" pageTitleTranslated=$currentJournal->getLocalizedName()}
 
@@ -21,166 +23,112 @@
 	{assign var="journalCover" value=$currentJournal->getLocalizedData('pageHeaderLogoImage')}
 {/if}
 
-<main class="digitopub-journal-page" id="digitopub-journal-content">
+<main class="dp-portal" id="digitopub-journal-content">
 
-	{* Hero Section *}
-	<section class="digitopub-journal-hero" aria-labelledby="digitopub-journal-hero-title">
-		<div class="digitopub-container">
-			<div class="digitopub-journal-hero__grid">
+	<section class="dp-portal-hero" aria-labelledby="digitopub-journal-hero-title">
+		<div class="dp-portal__inner dp-portal-hero__grid">
 
-				{* Cover *}
-				<div class="digitopub-journal-hero__cover">
-					{if $journalCover}
-						<img src="{$publicFilesDir}/{$journalCover.uploadName|escape:"url"}" alt="{$currentJournal->getLocalizedName()|escape}" class="digitopub-journal-hero__cover-image" width="{$journalCover.width|escape}" height="{$journalCover.height|escape}">
-					{else}
-						<div class="digitopub-journal-hero__cover-placeholder" aria-hidden="true">
-							<span>{$currentJournal->getLocalizedName()|escape|truncate:2:""}</span>
-						</div>
-					{/if}
-				</div>
-
-				{* Content *}
-				<div class="digitopub-journal-hero__content">
-					<h1 id="digitopub-journal-hero-title" class="digitopub-journal-hero__title">{$currentJournal->getLocalizedName()|escape}</h1>
-
-					<p class="digitopub-journal-hero__description">
-						Submit and manage your manuscript for {$currentJournal->getLocalizedName()|escape}. Published articles and issues are available on DigitoPub.
-					</p>
-
-					<ul class="digitopub-journal-hero__meta">
-						{if $currentJournal->getData('issn')}
-							<li>
-								<span class="digitopub-journal-hero__meta-label">{translate key="manager.setup.issn"}</span>
-								<span class="digitopub-journal-hero__meta-value">{$currentJournal->getData('issn')|escape}</span>
-							</li>
-						{/if}
-						{if $currentJournal->getData('onlineIssn')}
-							<li>
-								<span class="digitopub-journal-hero__meta-label">{translate key="manager.setup.onlineIssn"}</span>
-								<span class="digitopub-journal-hero__meta-value">{$currentJournal->getData('onlineIssn')|escape}</span>
-							</li>
-						{/if}
-						{if $currentJournal->getData('publisherInstitution')}
-							<li>
-								<span class="digitopub-journal-hero__meta-label">{translate key="manager.setup.publisher"}</span>
-								<span class="digitopub-journal-hero__meta-value">{$currentJournal->getData('publisherInstitution')|escape}</span>
-							</li>
-						{/if}
-					</ul>
-
-					<div class="digitopub-journal-hero__actions">
-						<a href="{url page="submission" op="wizard"}" class="digitopub-btn digitopub-btn--accent">
-							{translate key="author.submit"}
-						</a>
-						<a href="{url page="about" op="submissions"}" class="digitopub-btn digitopub-btn--outline">
-							{translate key="about.submissions"}
-						</a>
-						<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--primary">
-							Read this journal on DigitoPub
-						</a>
+			<div class="dp-portal-hero__media">
+				{if isset($digitopubCoverThumbs[$currentJournal->getId()])}
+					<img class="dp-portal-hero__cover" src="{$digitopubCoverThumbs[$currentJournal->getId()].sm|escape}" srcset="{$digitopubCoverThumbs[$currentJournal->getId()].sm|escape} 480w, {$digitopubCoverThumbs[$currentJournal->getId()].md|escape} 960w" sizes="(min-width: 768px) 15rem, 5rem" width="480" height="640" fetchpriority="high" decoding="async" alt="{$currentJournal->getLocalizedName()|escape}">
+				{elseif $journalCover}
+					<img class="dp-portal-hero__cover" src="{$publicFilesDir}/{$journalCover.uploadName|escape:"url"}" width="{$journalCover.width|escape}" height="{$journalCover.height|escape}" fetchpriority="high" decoding="async" alt="{$currentJournal->getLocalizedName()|escape}">
+				{else}
+					<div class="dp-portal-hero__cover dp-portal-hero__cover--placeholder" aria-hidden="true">
+						<span>{$currentJournal->getLocalizedName()|escape|truncate:2:""}</span>
 					</div>
-				</div>
-
+				{/if}
 			</div>
+
+			<div class="dp-portal-hero__content">
+				<h1 id="digitopub-journal-hero-title" class="dp-portal-hero__title">{$currentJournal->getLocalizedName()|escape}</h1>
+
+				<p class="dp-portal-hero__lead">Submit and track manuscripts for this journal. Published articles are on DigitoPub.</p>
+
+				{if $currentJournal->getData('issn') || $currentJournal->getData('onlineIssn') || $currentJournal->getData('publisherInstitution')}
+					<p class="dp-portal-hero__meta">
+						{if $currentJournal->getData('issn')}<span>{translate key="manager.setup.issn"} {$currentJournal->getData('issn')|escape}</span>{/if}
+						{if $currentJournal->getData('onlineIssn')}<span>{translate key="manager.setup.onlineIssn"} {$currentJournal->getData('onlineIssn')|escape}</span>{/if}
+						{if $currentJournal->getData('publisherInstitution')}<span>{$currentJournal->getData('publisherInstitution')|escape}</span>{/if}
+					</p>
+				{/if}
+
+				<div class="dp-portal-hero__actions">
+					<a href="{url page="submission" op="wizard"}" class="digitopub-btn digitopub-btn--primary">
+						{include file="frontend/components/icons/file-plus.tpl"}
+						New submission
+					</a>
+					<a href="{url page="about" op="submissions"}" class="digitopub-btn digitopub-btn--outline">Author guidelines</a>
+					<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--link">
+						View on DigitoPub
+						{include file="frontend/components/icons/external-link.tpl"}
+					</a>
+				</div>
+			</div>
+
 		</div>
 	</section>
 
-	{* Main Content *}
-	<div class="digitopub-journal-main">
-		<div class="digitopub-container">
-			<div class="digitopub-journal-main__grid">
+	<div class="dp-portal__inner dp-portal__body">
 
-				<div class="digitopub-journal-main__content">
-
-					{* How to submit *}
-					<section class="digitopub-journal-section" aria-labelledby="digitopub-journal-submit-title">
-						<h2 id="digitopub-journal-submit-title" class="digitopub-journal-section__title">Submit your manuscript</h2>
-						<div class="digitopub-journal-section__body">
-							<ol>
-								<li>Read the <a href="{url page="about" op="submissions"}">{translate key="about.submissions"}</a>.</li>
-								{if $isUserLoggedIn}
-									<li>Go to your <a href="{url page="dashboard"}">{translate key="navigation.dashboard"}</a> to track existing submissions.</li>
-								{else}
-									<li><a href="{url page="login"}">{translate key="user.login"}</a> or <a href="{url page="user" op="register"}">{translate key="user.register"}</a>.</li>
-								{/if}
-								<li>Start a <a href="{url page="submission" op="wizard"}">{translate key="author.submit"}</a>.</li>
-							</ol>
-							<a href="{url page="submission" op="wizard"}" class="digitopub-btn digitopub-btn--accent digitopub-btn--sm">{translate key="author.submit"}</a>
+		<section class="dp-portal-section" aria-labelledby="digitopub-journal-steps-title">
+			<h2 id="digitopub-journal-steps-title" class="dp-portal-section__title">How to submit</h2>
+			<ol class="dp-steps">
+				<li class="dp-steps__item">
+					{include file="frontend/components/icons/book-open.tpl"}
+					<div class="dp-steps__text">
+						<h3 class="dp-steps__title">Read the author guidelines</h3>
+						<p>Check the scope and formatting rules in the <a href="{url page="about" op="submissions"}">author guidelines</a>.</p>
+					</div>
+				</li>
+				<li class="dp-steps__item">
+					{if $isUserLoggedIn}
+						{include file="frontend/components/icons/layout-dashboard.tpl"}
+						<div class="dp-steps__text">
+							<h3 class="dp-steps__title">Go to your dashboard</h3>
+							<p>Open your <a href="{url page="dashboard"}">dashboard</a> to follow your existing submissions.</p>
 						</div>
-					</section>
-
-					{* Where to read *}
-					<section class="digitopub-journal-section" aria-labelledby="digitopub-journal-read-title">
-						<h2 id="digitopub-journal-read-title" class="digitopub-journal-section__title">Looking for published articles?</h2>
-						<div class="digitopub-journal-section__body">
-							<p>Issues, articles, policies and the editorial board of {$currentJournal->getLocalizedName()|escape} are published on DigitoPub.</p>
-							<a href="{$digitopubJournalUrl}" class="digitopub-btn digitopub-btn--outline digitopub-btn--sm">Go to DigitoPub</a>
+					{else}
+						{include file="frontend/components/icons/log-in.tpl"}
+						<div class="dp-steps__text">
+							<h3 class="dp-steps__title">Log in or register</h3>
+							<p><a href="{url page="login"}">Log in</a> to your account, or <a href="{url page="user" op="register"}">register</a> if you are new.</p>
 						</div>
-					</section>
-
-					{* Additional Homepage Content (editor-managed) *}
-					{if $additionalHomeContent}
-						<section class="digitopub-journal-section" aria-label="{translate key="plugins.themes.digitopub.journal.additionalContent"}">
-							<div class="digitopub-journal-section__body">
-								{$additionalHomeContent}
-							</div>
-						</section>
 					{/if}
-
-				</div>
-
-				{* Right column: sidebar *}
-				<aside class="digitopub-journal-sidebar" aria-label="{translate key="common.navigation.sidebar"}">
-
-					{* Journal Information *}
-					<div class="digitopub-journal-sidebar__block">
-						<h3 class="digitopub-journal-sidebar__title">{translate key="about.aboutContext"}</h3>
-						<ul class="digitopub-journal-sidebar__list">
-							{if $currentJournal->getData('issn')}
-								<li>
-									<span class="digitopub-journal-sidebar__label">{translate key="manager.setup.issn"}</span>
-									<span class="digitopub-journal-sidebar__value">{$currentJournal->getData('issn')|escape}</span>
-								</li>
-							{/if}
-							{if $currentJournal->getData('onlineIssn')}
-								<li>
-									<span class="digitopub-journal-sidebar__label">{translate key="manager.setup.onlineIssn"}</span>
-									<span class="digitopub-journal-sidebar__value">{$currentJournal->getData('onlineIssn')|escape}</span>
-								</li>
-							{/if}
-							{if $currentJournal->getData('publisherInstitution')}
-								<li>
-									<span class="digitopub-journal-sidebar__label">{translate key="manager.setup.publisher"}</span>
-									<span class="digitopub-journal-sidebar__value">{$currentJournal->getData('publisherInstitution')|escape}</span>
-								</li>
-							{/if}
-							<li>
-								<span class="digitopub-journal-sidebar__label">{translate key="common.language"}</span>
-								<span class="digitopub-journal-sidebar__value">{$currentJournal->getPrimaryLocale()|escape}</span>
-							</li>
-						</ul>
+				</li>
+				<li class="dp-steps__item">
+					{include file="frontend/components/icons/file-plus.tpl"}
+					<div class="dp-steps__text">
+						<h3 class="dp-steps__title">Start a new submission</h3>
+						<p>Upload your manuscript and details in a few guided steps.</p>
 					</div>
+				</li>
+			</ol>
+		</section>
 
-					{* Quick Links *}
-					<div class="digitopub-journal-sidebar__block">
-						<h3 class="digitopub-journal-sidebar__title">{translate key="plugins.themes.digitopub.journal.navigation"}</h3>
-						<ul class="digitopub-journal-sidebar__links">
-							<li><a href="{url page="submission" op="wizard"}">{translate key="author.submit"}</a></li>
-							<li><a href="{url page="about" op="submissions"}">{translate key="about.submissions"}</a></li>
-							{if $isUserLoggedIn}
-								<li><a href="{url page="dashboard"}">{translate key="navigation.dashboard"}</a></li>
-							{else}
-								<li><a href="{url page="login"}">{translate key="user.login"}</a></li>
-								<li><a href="{url page="user" op="register"}">{translate key="user.register"}</a></li>
-							{/if}
-							<li><a href="{$digitopubJournalUrl}">Read on DigitoPub</a></li>
-						</ul>
-					</div>
+		<section class="dp-portal-section" aria-labelledby="digitopub-journal-facts-title">
+			<h2 id="digitopub-journal-facts-title" class="dp-portal-section__title">About this journal</h2>
+			<dl class="dp-facts">
+				{if $currentJournal->getData('issn')}
+					<div class="dp-facts__row"><dt>{translate key="manager.setup.issn"}</dt><dd>{$currentJournal->getData('issn')|escape}</dd></div>
+				{/if}
+				{if $currentJournal->getData('onlineIssn')}
+					<div class="dp-facts__row"><dt>{translate key="manager.setup.onlineIssn"}</dt><dd>{$currentJournal->getData('onlineIssn')|escape}</dd></div>
+				{/if}
+				{if $currentJournal->getData('publisherInstitution')}
+					<div class="dp-facts__row"><dt>{translate key="manager.setup.publisher"}</dt><dd>{$currentJournal->getData('publisherInstitution')|escape}</dd></div>
+				{/if}
+				<div class="dp-facts__row"><dt>{translate key="common.language"}</dt><dd>{$currentJournal->getPrimaryLocale()|escape}</dd></div>
+			</dl>
+		</section>
 
-				</aside>
+		{* Additional Homepage Content (editor-managed) *}
+		{if $additionalHomeContent}
+			<section class="dp-portal-section dp-portal-section--content" aria-label="{translate key="plugins.themes.digitopub.journal.additionalContent"}">
+				{$additionalHomeContent}
+			</section>
+		{/if}
 
-			</div>
-		</div>
 	</div>
 
 </main>
