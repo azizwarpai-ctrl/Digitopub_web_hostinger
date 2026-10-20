@@ -3,13 +3,12 @@
 import type React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Loader2 } from "lucide-react"
+import { Check, Circle, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import Image from "next/image"
 import Link from "next/link"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { AuthShell } from "@/src/features/auth/components/auth-shell"
 import { PasswordInput } from "@/src/features/auth/components/password-input"
 import { PasswordRecoveryError } from "@/src/features/auth/api/use-forgot-password"
 import { resetPassword } from "@/src/features/auth/api/use-reset-password"
@@ -19,29 +18,27 @@ const MIN_PASSWORD_LENGTH = 6
 // bcrypt ignores everything past 72 bytes; the server rejects longer passwords.
 const MAX_PASSWORD_BYTES = 72
 
-function Shell({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+const BACK_TO_LOGIN = (
+  <Link href="/admin/login" className="underline underline-offset-4 hover:text-primary">
+    Back to log in
+  </Link>
+)
+
+function Rule({ met, violated = false, children }: { met: boolean; violated?: boolean; children: React.ReactNode }) {
+  const Icon = met ? Check : violated ? X : Circle
+  const tone = met
+    ? "text-emerald-700 dark:text-emerald-400"
+    : violated
+      ? "text-destructive"
+      : "text-muted-foreground"
   return (
-    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-8 sm:p-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Image
-            src="/images/logodigitopub.png"
-            alt="DigitoPub"
-            width={180}
-            height={60}
-            className="mx-auto mb-4"
-          />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">{title}</CardTitle>
-            {description && <CardDescription>{description}</CardDescription>}
-          </CardHeader>
-          <CardContent>{children}</CardContent>
-        </Card>
-      </div>
-    </div>
+    <li className={`flex items-center gap-2 ${tone}`}>
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span>
+        {children}
+        <span className="sr-only">{met ? " (met)" : " (not met)"}</span>
+      </span>
+    </li>
   )
 }
 
@@ -62,36 +59,40 @@ export function ResetPasswordForm() {
   const [done, setDone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const inFlight = useRef(false)
+  const noticeRef = useRef<HTMLDivElement>(null)
+  const showingNotice = !id || !token || invalidLink || !!done
+
+  useEffect(() => {
+    if (showingNotice) noticeRef.current?.focus()
+  }, [showingNotice])
 
   if (!id || !token || invalidLink) {
     return (
-      <Shell title="Reset your password">
+      <AuthShell title="Link expired or invalid">
         <div className="flex flex-col gap-6">
-          <div role="alert">
+          <div role="alert" tabIndex={-1} ref={noticeRef} className="outline-none">
             <AlertBanner variant="error" message={INVALID_LINK_MESSAGE} />
           </div>
-          <div className="text-center text-sm text-muted-foreground">
-            <Link href="/admin/forgot-password" className="underline underline-offset-4 hover:text-primary">
-              Request a new link
-            </Link>
-          </div>
+          <Button asChild className="w-full">
+            <Link href="/admin/forgot-password">Request a new link</Link>
+          </Button>
         </div>
-      </Shell>
+      </AuthShell>
     )
   }
 
   if (done) {
     return (
-      <Shell title="Password updated">
+      <AuthShell title="Password updated">
         <div className="flex flex-col gap-6">
-          <div role="status">
+          <div role="status" tabIndex={-1} ref={noticeRef} className="outline-none">
             <AlertBanner variant="success" message={done} />
           </div>
           <Button asChild className="w-full">
             <Link href="/admin/login">Log in</Link>
           </Button>
         </div>
-      </Shell>
+      </AuthShell>
     )
   }
 
@@ -137,8 +138,16 @@ export function ResetPasswordForm() {
     if (error) setError(null)
   }
 
+  const longEnough = password.length >= MIN_PASSWORD_LENGTH
+  const matches = confirmPassword.length > 0 && password === confirmPassword
+  const tooLong = new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES
+
   return (
-    <Shell title="Choose a new password" description="Enter a new password for your admin account.">
+    <AuthShell
+      title="Choose a new password"
+      description="Enter a new password for your admin account."
+      footer={BACK_TO_LOGIN}
+    >
       <form onSubmit={handleSubmit}>
         <div className="flex flex-col gap-6">
           <div className="grid gap-2">
@@ -161,18 +170,33 @@ export function ResetPasswordForm() {
               onChange={editField(setConfirmPassword)}
             />
           </div>
+          <ul aria-live="polite" className="grid gap-1.5 text-sm">
+            <Rule met={longEnough}>At least 6 characters</Rule>
+            <Rule met={matches}>Passwords match</Rule>
+            {tooLong && (
+              <Rule met={false} violated>
+                72 bytes or fewer
+              </Rule>
+            )}
+          </ul>
+          <p className="-mt-3 text-sm text-muted-foreground">This link expires 15 minutes after it was sent.</p>
           {error && (
             <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
               <AlertBanner variant="error" message={error} />
             </div>
           )}
-          <Button type="submit" className="w-full" disabled={isLoading} aria-busy={isLoading}>
+          <Button
+            type="submit"
+            className="w-full active:scale-[0.99] transition-transform motion-reduce:transition-none"
+            disabled={isLoading}
+            aria-busy={isLoading}
+          >
             {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
             {isLoading ? "Updating..." : "Reset password"}
           </Button>
         </div>
       </form>
-    </Shell>
+    </AuthShell>
   )
 }
 

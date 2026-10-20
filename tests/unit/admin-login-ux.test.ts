@@ -54,7 +54,32 @@ describe("admin login page", () => {
     expect(await render()).toMatch(/aria-label="Toggle password visibility"/)
   })
 
-  it("centres the card on every viewport with a dynamic-viewport height", async () => {
+  it("fills every viewport with a dynamic-viewport height", async () => {
     expect(await render()).toMatch(/min-h-\[100dvh\]/)
+  })
+
+  it("renders exactly one h1 titled Sign in and no legacy logo", async () => {
+    const html = await render()
+    expect(html.match(/<h1/g)).toHaveLength(1)
+    expect(html).toMatch(/<h1[^>]*>Sign in<\/h1>/)
+    expect(html).not.toContain("logodigitopub.png")
+    expect(html).not.toContain("Admin Login")
+    expect(html).not.toContain("Admin Portal")
+  })
+
+  it("wires the caps lock live region to the password input", async () => {
+    const html = await render()
+    expect(html).toContain('aria-describedby="password-capslock"')
+    expect(html).toContain('id="password-capslock"')
+  })
+
+  it("keeps tab order: password input, forgot link, then submit", async () => {
+    const html = await render()
+    const input = html.indexOf('id="password"')
+    const link = html.indexOf('href="/admin/forgot-password"')
+    const submit = html.indexOf('type="submit"')
+    expect(input).toBeGreaterThan(-1)
+    expect(link).toBeGreaterThan(input)
+    expect(submit).toBeGreaterThan(link)
   })
 })

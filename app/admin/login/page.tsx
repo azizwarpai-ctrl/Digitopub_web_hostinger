@@ -7,10 +7,9 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import Image from "next/image"
 import Link from "next/link"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { AuthShell } from "@/src/features/auth/components/auth-shell"
 import { PasswordInput } from "@/src/features/auth/components/password-input"
 
 import { client } from "@/src/lib/rpc"
@@ -25,6 +24,7 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [capsLock, setCapsLock] = useState(false)
   // A ref, not state: a fast double-submit fires before React re-renders the
   // disabled button, so state alone would let a second request through.
   const inFlight = useRef(false)
@@ -52,7 +52,7 @@ export default function AdminLoginPage() {
         router.push(`/admin/verify-code?email=${encodeURIComponent(email)}`)
         return
       }
-      
+
       router.push("/admin/dashboard")
       router.refresh()
     } catch (error: unknown) {
@@ -69,76 +69,82 @@ export default function AdminLoginPage() {
     if (error) setError(null)
   }
 
-  return (
-    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-8 sm:p-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Image
-            src="/images/logodigitopub.png"
-            alt="DigitoPub"
-            width={180}
-            height={60}
-            className="mx-auto mb-4"
-          />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-          <p className="text-sm text-muted-foreground mt-2">Sign in to manage your scientific journals</p>
-        </div>
+  const updateCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    setCapsLock(e.getModifierState("CapsLock"))
+  }
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Admin Login</CardTitle>
-            <CardDescription>Enter your admin credentials to access the dashboard</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin}>
-              <div className="flex flex-col gap-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    required
-                    value={email}
-                    onChange={editField(setEmail)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Password</Label>
-                  <PasswordInput
-                    id="password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={editField(setPassword)}
-                  />
-                  <Link
-                    href="/admin/forgot-password"
-                    className="justify-self-end text-sm text-muted-foreground underline-offset-4 hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-                {error && (
-                  <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                    <AlertBanner variant="error" message={error} />
-                  </div>
-                )}
-                <Button type="submit" className="w-full" disabled={isLoading} aria-busy={isLoading}>
-                  {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-                  {isLoading ? "Signing in..." : "Sign In"}
-                </Button>
-              </div>
-              <div className="mt-4 text-center text-sm text-muted-foreground">
-                <Link href="/" className="underline underline-offset-4 hover:text-primary">
-                  Back to main site
-                </Link>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+  return (
+    <AuthShell
+      title="Sign in"
+      description="DigitoPub admin portal"
+      footer={
+        <Link href="/" className="underline-offset-4 hover:underline hover:text-foreground">
+          Back to main site
+        </Link>
+      }
+    >
+      <form onSubmit={handleLogin}>
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              required
+              value={email}
+              onChange={editField(setEmail)}
+            />
+          </div>
+          {/* The forgot link follows the input in the DOM (tab order: toggle, then link) but sits in the label row. */}
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <Label htmlFor="password" className="col-start-1 row-start-1">
+              Password
+            </Label>
+            <div className="col-span-2 row-start-2">
+              <PasswordInput
+                id="password"
+                autoComplete="current-password"
+                aria-describedby="password-capslock"
+                required
+                value={password}
+                onChange={editField(setPassword)}
+                onKeyDown={updateCapsLock}
+                onKeyUp={updateCapsLock}
+                onBlur={() => setCapsLock(false)}
+              />
+            </div>
+            <p
+              id="password-capslock"
+              aria-live="polite"
+              className="col-span-2 row-start-3 text-xs text-amber-700 dark:text-amber-400"
+            >
+              {capsLock ? "Caps Lock is on" : ""}
+            </p>
+            <Link
+              href="/admin/forgot-password"
+              className="col-start-2 row-start-1 justify-self-end text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          {error && (
+            <div role="alert" className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+              <AlertBanner variant="error" message={error} />
+            </div>
+          )}
+          <Button
+            type="submit"
+            className="w-full active:scale-[0.99] transition-transform motion-reduce:transition-none"
+            disabled={isLoading}
+            aria-busy={isLoading}
+          >
+            {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {isLoading ? "Signing in..." : "Sign in"}
+          </Button>
+        </div>
+      </form>
+    </AuthShell>
   )
 }

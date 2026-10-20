@@ -31,18 +31,54 @@ test.describe("admin password recovery", () => {
     await page.goto("/admin/forgot-password")
     await page.locator("#email").fill("admin@example.com")
     await page.getByRole("button", { name: "Send reset link" }).click()
-    await expect(page.getByText(GENERIC)).toBeVisible()
+    const status = page.getByRole("main").getByRole("status")
+    await expect(status.locator("strong")).toHaveText("admin@example.com")
+    await expect(status).toContainText("expires in 15 minutes")
     await expect(page.locator("form")).toHaveCount(0)
-    await expect(page.getByRole("link", { name: "Back to log in" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Back to log in" })).toHaveCount(1)
+  })
+
+  test("forgot-password resend is disabled during a countdown, then works", async ({ page }) => {
+    await page.clock.install()
+    let calls = 0
+    await page.route("**/api/auth/forgot-password", (route) => {
+      calls++
+      return route.fulfill(json(200, { success: true, message: GENERIC }))
+    })
+    await page.goto("/admin/forgot-password")
+    await page.locator("#email").fill("admin@example.com")
+    await page.getByRole("button", { name: "Send reset link" }).click()
+    const resend = page.getByRole("button", { name: /^Send another link/ })
+    await expect(resend).toBeDisabled()
+    await expect(resend).toContainText(/Send another link in \d+s/)
+    await page.clock.fastForward(61_000)
+    await expect(resend).toBeEnabled()
+    await expect(resend).toHaveText("Send another link")
+    await resend.click()
+    await expect.poll(() => calls).toBe(2)
   })
 
   test("reset-password without params shows the invalid-link state", async ({ page }) => {
     await page.goto("/admin/reset-password")
-    await expect(page.getByText(INVALID_LINK)).toBeVisible()
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(INVALID_LINK)
     await expect(page.getByRole("link", { name: "Request a new link" })).toHaveAttribute(
       "href",
       "/admin/forgot-password",
     )
+  })
+
+  test("rule checklist updates as the user types", async ({ page }) => {
+    await page.goto(RESET_URL)
+    const length = page.getByRole("listitem").filter({ hasText: "At least 6 characters" })
+    const match = page.getByRole("listitem").filter({ hasText: "Passwords match" })
+    await page.locator("#password").fill("abc")
+    await expect(length).toContainText("(not met)")
+    await page.locator("#password").fill("new-password-1")
+    await page.locator("#confirmPassword").fill("new-password-1")
+    await expect(length).toContainText("(met)")
+    await expect(length).not.toContainText("(not met)")
+    await expect(match).toContainText("(met)")
+    await expect(match).not.toContainText("(not met)")
   })
 
   test("mismatched passwords show an error and send no request", async ({ page }) => {

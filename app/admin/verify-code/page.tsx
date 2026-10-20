@@ -5,11 +5,11 @@ import { useState, useEffect, useRef, Suspense } from "react"
 import { useRouter, useSearchParams, redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import Image from "next/image"
-import { ShieldCheck, RefreshCw, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { RefreshCw, Loader2 } from "lucide-react"
 import { client } from "@/src/lib/rpc"
 import { AlertBanner } from "@/components/ui/alert-banner"
+import { AuthShell } from "@/src/features/auth/components/auth-shell"
 
 function VerifyCodeContent() {
     const [code, setCode] = useState(["", "", "", "", "", ""])
@@ -132,33 +132,19 @@ function VerifyCodeContent() {
     }
 
     return (
-        <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-6">
-            <div className="w-full max-w-md">
-                <div className="mb-8 text-center">
-                    <Image
-                        src="/images/logodigitopub.png"
-                        alt="DigitoPub Logo"
-                        width={180}
-                        height={60}
-                        className="mx-auto mb-4"
-                    />
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                        <ShieldCheck className="h-6 w-6 text-primary" />
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Verify Your Identity</h1>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                        We sent a 6-digit verification code to <span className="font-medium text-foreground">{email}</span>
-                    </p>
-                </div>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-xl text-center">Enter Verification Code</CardTitle>
-                        <CardDescription className="text-center">
-                            The code expires in 5 minutes
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+        <AuthShell
+            title="Check your email"
+            description={
+                <>
+                    We sent a 6-digit verification code to <span className="font-medium text-foreground">{email}</span>. The code expires in 5 minutes.
+                </>
+            }
+            footer={
+                <Link href="/admin/login" className="underline-offset-4 hover:underline hover:text-foreground">
+                    Back to log in
+                </Link>
+            }
+        >
                         <form onSubmit={handleVerify}>
                             <div className="flex flex-col gap-6">
                                 {/* OTP Input Grid */}
@@ -180,11 +166,15 @@ function VerifyCodeContent() {
                                 </div>
 
                                 {error && (
-                                    <AlertBanner variant="error" message={error} />
+                                    <div role="alert">
+                                        <AlertBanner variant="error" message={error} />
+                                    </div>
                                 )}
 
                                 {successMessage && (
-                                    <AlertBanner variant="success" message={successMessage} />
+                                    <div role="status">
+                                        <AlertBanner variant="success" message={successMessage} />
+                                    </div>
                                 )}
 
                                 <Button type="submit" className="w-full" disabled={isLoading}>
@@ -210,18 +200,15 @@ function VerifyCodeContent() {
                                 </div>
                             </div>
                         </form>
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
+        </AuthShell>
     )
 }
 
 function VerifyCodeFallback() {
     return (
-        <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-6">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <AuthShell title="Check your email">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
+        </AuthShell>
     )
 }
 

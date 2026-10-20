@@ -31,6 +31,12 @@ describe("admin forgot-password page", () => {
     expect(html).toContain("Reset your password")
     expect(html).toContain('href="/admin/login"')
   })
+
+  it("uses the shared shell: one h1 and no legacy logo", async () => {
+    const html = await render()
+    expect(html.match(/<h1/g)).toHaveLength(1)
+    expect(html).not.toContain("logodigitopub.png")
+  })
 })
 
 describe("admin reset-password page", () => {
@@ -49,9 +55,19 @@ describe("admin reset-password page", () => {
     expect(html.match(/aria-label="Toggle password visibility"/g)).toHaveLength(2)
   })
 
+  it("shows a live rule checklist and the expiry note", async () => {
+    state.query = VALID_QUERY
+    const html = await render()
+    expect(html).toContain("At least 6 characters")
+    expect(html).toContain("Passwords match")
+    expect(html).toContain("This link expires 15 minutes after it was sent.")
+    expect(html).toMatch(/<ul[^>]*aria-live="polite"/)
+  })
+
   it("shows the invalid-link state when id/token are missing", async () => {
     state.query = ""
     const html = await render()
+    expect(html).toMatch(/<h1[^>]*>Link expired or invalid<\/h1>/)
     expect(html).toContain("This reset link is invalid or has expired.")
     expect(html).toContain('href="/admin/forgot-password"')
     expect(html).not.toMatch(/<input/)
