@@ -1,4 +1,5 @@
 import { prisma } from "../src/lib/db/config"
+import { seedNotificationTemplates } from "../src/features/notifications/server/templates"
 
 const systemTemplates = [
   {
@@ -123,6 +124,10 @@ async function seed() {
   if (errors.length > 0) {
     throw new Error(`Seeding failed with ${errors.length} errors.\n` + errors.map(e => e.message).join("\n"))
   }
+
+  // Publication-alert templates (#203). Pass --force to restore edited ones to the shipped version.
+  const notify = await seedNotificationTemplates(prisma, { force: process.argv.includes("--force") })
+  console.log(`✅ Notification templates: ${notify.created.length} created, ${notify.restored.length} restored, ${notify.kept.length} kept`)
 
   console.log("Done.")
 }
