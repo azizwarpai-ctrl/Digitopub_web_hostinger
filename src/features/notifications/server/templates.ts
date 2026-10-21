@@ -11,6 +11,9 @@ export const NOTIFICATION_TEMPLATE_KEYS = {
     subscriptionConfirm: "notify_subscription_confirm",
     welcome: "notify_welcome",
     preferencesUpdated: "notify_preferences_updated",
+    newIssue: "notify_new_issue",
+    weeklyDigest: "notify_weekly_digest",
+    dailyDigest: "notify_daily_digest",
 } as const
 
 export type TemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[keyof typeof NOTIFICATION_TEMPLATE_KEYS]
@@ -85,6 +88,57 @@ Your publication alert preferences at {{site_name}} were updated.
 
 Review: {{manage_url}}
 If you did not make this change, unsubscribe: {{unsubscribe_url}}`,
+    },
+    notify_new_issue: {
+        subject: "{{journal_title}} · Vol. {{volume}}, No. {{number}} ({{year}}) is now available",
+        description: "New issue alert. Placeholder until the full template set is seeded.",
+        variables: ["recipient_name", "site_name", "journal_title", "volume", "number", "year", "issue_url", "toc_html", "toc_text", "manage_url", "unsubscribe_url"],
+        html_content: `<p>Dear {{recipient_name}},</p>
+<p>A new issue of {{journal_title}} has been published: Vol. {{volume}}, No. {{number}} ({{year}}).</p>
+{{{toc_html}}}
+<p><a href="{{issue_url}}">Read the full issue</a></p>
+<p><a href="{{manage_url}}">Manage preferences</a> · <a href="{{unsubscribe_url}}">Unsubscribe</a></p>`,
+        text_content: `Dear {{recipient_name}},
+
+A new issue of {{journal_title}} has been published: Vol. {{volume}}, No. {{number}} ({{year}}).
+
+{{toc_text}}
+
+Read the full issue: {{issue_url}}
+
+Manage preferences: {{manage_url}}
+Unsubscribe: {{unsubscribe_url}}`,
+    },
+    notify_weekly_digest: {
+        subject: "New research in {{top_disciplines}} — week of {{week_start}}",
+        description: "Weekly article digest. Placeholder until the full template set is seeded.",
+        variables: ["recipient_name", "site_name", "top_disciplines", "week_start", "count", "articles_html", "articles_text", "manage_url", "unsubscribe_url"],
+        html_content: `<p>Dear {{recipient_name}},</p>
+<p>{{count}} new article(s) in your fields were published this week.</p>
+{{{articles_html}}}
+<p><a href="{{manage_url}}">Manage preferences</a> · <a href="{{unsubscribe_url}}">Unsubscribe</a></p>`,
+        text_content: `Dear {{recipient_name}},
+
+{{count}} new article(s) in your fields were published this week.
+
+{{articles_text}}
+
+Manage preferences: {{manage_url}}
+Unsubscribe: {{unsubscribe_url}}`,
+    },
+    notify_daily_digest: {
+        subject: "{{count}} new article(s) in your fields — {{date}}",
+        description: "Daily article digest. Placeholder until the full template set is seeded.",
+        variables: ["recipient_name", "site_name", "date", "count", "articles_html", "articles_text", "manage_url", "unsubscribe_url"],
+        html_content: `<p>Dear {{recipient_name}},</p>
+{{{articles_html}}}
+<p><a href="{{manage_url}}">Manage preferences</a> · <a href="{{unsubscribe_url}}">Unsubscribe</a></p>`,
+        text_content: `Dear {{recipient_name}},
+
+{{articles_text}}
+
+Manage preferences: {{manage_url}}
+Unsubscribe: {{unsubscribe_url}}`,
     },
 }
 

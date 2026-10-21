@@ -57,6 +57,7 @@ Only required if integrating with an Open Journal Systems instance. The pool is 
 | Variable | Description | Default | Used By |
 |----------|-------------|---------|---------|
 | `MAX_FILE_SIZE_MB` | Maximum upload file size in MB | `50` | Upload handlers |
+| `NOTIFICATIONS_ENABLED` | Kill switch for publication-alert crons (detect, digests, send). Anything other than `true` makes them no-ops | `false` | `src/features/notifications/server/config.ts` |
 | `NOTIFY_IMPORT_MAX_ROWS` | Maximum data rows per uploaded notification subscriber list | `10000` | `src/features/notifications/server/config.ts` |
 | `ALLOWED_FILE_TYPES` | Comma-separated allowed extensions | `pdf,doc,docx,txt,jpg,png` | Upload handlers |
 | `UPLOAD_DIR` | Directory for file uploads | `./uploads` | Upload handlers |
