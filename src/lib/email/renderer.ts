@@ -17,6 +17,38 @@ export function renderTemplate(
   })
 }
 
+/** Escapes a value for HTML text and attribute contexts. */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+/**
+ * Render the HTML part of a template. `{{variable}}` is HTML-escaped.
+ * `{{{variable}}}` inserts raw HTML, but only for names in `rawAllowed`
+ * (server-built blocks such as a table of contents); any other triple-brace
+ * variable is escaped like a normal one, so an edited template cannot opt a
+ * user-supplied value out of escaping.
+ */
+export function renderHtmlTemplate(
+  template: string,
+  variables: Record<string, string>,
+  rawAllowed: readonly string[] = []
+): string {
+  return template
+    .replace(/\{\{\{(\w+)\}\}\}/g, (match, key: string) => {
+      if (!(key in variables)) return match
+      return rawAllowed.includes(key) ? variables[key] : escapeHtml(variables[key])
+    })
+    .replace(/\{\{(\w+)\}\}/g, (match, key: string) => {
+      return key in variables ? escapeHtml(variables[key]) : match
+    })
+}
+
 /**
  * Extract all unique variable names ({{key}}) from a template string.
  */

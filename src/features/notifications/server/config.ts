@@ -40,3 +40,25 @@ export const PENDING_SUBSCRIBER_RETENTION_DAYS = 90
 export function isNotificationsEnabled(): boolean {
     return process.env.NOTIFICATIONS_ENABLED === "true"
 }
+
+export interface SendLimits {
+    perRun: number
+    perHour: number
+    perDay: number
+}
+
+/**
+ * Throttle for the send cron (`NOTIFY_MAX_PER_RUN/HOUR/DAY`). Set the hour
+ * and day values to about 80% of the hosting plan's SMTP limits (hPanel).
+ */
+export function getSendLimits(): SendLimits {
+    return {
+        perRun: positiveInt(process.env.NOTIFY_MAX_PER_RUN, 20),
+        perHour: positiveInt(process.env.NOTIFY_MAX_PER_HOUR, 60),
+        perDay: positiveInt(process.env.NOTIFY_MAX_PER_DAY, 300),
+    }
+}
+
+/** Retries for temporary SMTP failures; each waits attempts × 10 minutes. */
+export const MAX_SEND_ATTEMPTS = 3
+export const RETRY_BACKOFF_MS = 10 * 60 * 1000

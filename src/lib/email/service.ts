@@ -9,7 +9,7 @@
  */
 
 import { prisma } from "@/src/lib/db/config"
-import { renderTemplate, validateVariables } from "./renderer"
+import { renderHtmlTemplate, renderTemplate, validateVariables } from "./renderer"
 import { getTransporter, getFromAddress, isSmtpConfigured } from "./transport"
 
 export interface SendEmailOptions {
@@ -23,6 +23,8 @@ export interface SendTemplateEmailOptions {
   templateName: string
   to: string
   variables: Record<string, string>
+  /** Variables allowed as raw HTML via {{{name}}} (server-built blocks only). */
+  rawAllowed?: readonly string[]
 }
 
 export interface PreviewResult {
@@ -92,7 +94,8 @@ export async function sendTemplateEmail(
 
   // Render
   const renderedSubject = renderTemplate(template.subject, options.variables)
-  const renderedHtml = renderTemplate(template.html_content, options.variables)
+  // HTML is escaped; subject and text are plain text and are not.
+  const renderedHtml = renderHtmlTemplate(template.html_content, options.variables, options.rawAllowed)
   const renderedText = template.text_content
     ? renderTemplate(template.text_content, options.variables)
     : undefined
@@ -148,7 +151,7 @@ export async function previewTemplate(
   }
 
   const renderedSubject = renderTemplate(template.subject, variables)
-  const renderedHtml = renderTemplate(template.html_content, variables)
+  const renderedHtml = renderHtmlTemplate(template.html_content, variables)
   const renderedText = template.text_content
     ? renderTemplate(template.text_content, variables)
     : null
