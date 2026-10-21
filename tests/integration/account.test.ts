@@ -5,6 +5,7 @@ const hoisted = vi.hoisted(() => ({
     userEventDeleteMany: vi.fn(),
     userMetricsDeleteMany: vi.fn(),
     userOrcidLinkDeleteMany: vi.fn(),
+    notificationSubscriberDeleteMany: vi.fn(),
     revokedOrcidUpsert: vi.fn(),
     revokedOrcidFindUnique: vi.fn(async () => null),
     transaction: vi.fn(),
@@ -32,6 +33,10 @@ vi.mock("@/src/lib/db/config", () => ({
     },
 }))
 
+// account.ts reaches the email service through the notifications feature.
+vi.mock("server-only", () => ({}))
+vi.mock("@/src/lib/email/service", () => ({ sendTemplateEmail: vi.fn(async () => ({ success: true })) }))
+
 process.env.IDENTITY_COOKIE_SECRET ||= "test-secret"
 process.env.ORCID_STATE_SECRET ||= "test-secret"
 process.env.EVENT_IP_HASH_SALT_SEED ||= "test-secret"
@@ -49,8 +54,8 @@ import {
 const app = new Hono().route("/", accountRouter)
 const ORCID = "0000-0001-2345-6789"
 
-function authedRequest(path: string, init: RequestInit = {}) {
-    const cookie = mintCookie({ orcid: ORCID, ojs_user_id: null, email_hash: null })
+function authedRequest(path: string, init: RequestInit = {}, emailHash: string | null = null) {
+    const cookie = mintCookie({ orcid: ORCID, ojs_user_id: null, email_hash: emailHash })
     return app.request(`http://test${path}`, {
         ...init,
         headers: {
@@ -117,6 +122,7 @@ describe("/api/account", () => {
                     hoisted.userEventDeleteMany.mockResolvedValue({ count: 7 })
                     hoisted.userMetricsDeleteMany.mockResolvedValue({ count: 1 })
                     hoisted.userOrcidLinkDeleteMany.mockResolvedValue({ count: 1 })
+                    hoisted.notificationSubscriberDeleteMany.mockResolvedValue({ count: 1 })
                     hoisted.revokedOrcidUpsert.mockResolvedValue({
                         orcid: ORCID,
                         revoked_at: new Date(),
@@ -126,16 +132,23 @@ describe("/api/account", () => {
                         userEvent: { deleteMany: hoisted.userEventDeleteMany },
                         userMetrics: { deleteMany: hoisted.userMetricsDeleteMany },
                         userOrcidLink: { deleteMany: hoisted.userOrcidLinkDeleteMany },
+                        notificationSubscriber: { deleteMany: hoisted.notificationSubscriberDeleteMany },
                         revokedOrcid: { upsert: hoisted.revokedOrcidUpsert },
                     } as never)
                 }
             )
 
-            const res = await authedRequest("/data", { method: "DELETE" })
+            const EMAIL_HASH = "a".repeat(64)
+            const res = await authedRequest("/data", { method: "DELETE" }, EMAIL_HASH)
             expect(res.status).toBe(200)
             const body = await res.json()
             expect(body.success).toBe(true)
             expect(body.deleted.user_event_rows).toBe(7)
+            // Publication-alert subscriber erased by ORCID iD or verified email (#199).
+            expect(body.deleted.notification_subscriber_rows).toBe(1)
+            expect(hoisted.notificationSubscriberDeleteMany).toHaveBeenCalledWith({
+                where: { OR: [{ orcid: ORCID }, { email_hash: EMAIL_HASH }] },
+            })
             const setCookie = res.headers.get("Set-Cookie") || ""
             expect(setCookie).toContain(`${IDENTITY_COOKIE_NAME}=`)
             expect(setCookie).toContain("Max-Age=0")

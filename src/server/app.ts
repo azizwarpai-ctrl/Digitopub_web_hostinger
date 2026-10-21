@@ -19,6 +19,7 @@ import { accountRouter } from "@/src/server/routes/account"
 import { adminAnalyticsRouter } from "@/src/features/admin-analytics/server"
 import { articleAudioRouter } from "@/src/features/article-audio/server"
 import { notificationsRouter } from "@/src/features/notifications/server"
+import { notificationsPublicRouter } from "@/src/server/routes/notifications-public"
 
 const apiApp = new Hono()
     .route("/journals", journalRouter)
@@ -42,6 +43,9 @@ const apiApp = new Hono()
     .route("/search", searchRouter)
     .route("/admin-analytics", adminAnalyticsRouter)
     .route("/article-audio", articleAudioRouter)
+    // Public alert endpoints first: the admin router's use("*", requireAdmin)
+    // must never see /notifications/subscribe, /confirm, /preferences, /unsubscribe.
+    .route("/notifications", notificationsPublicRouter)
     .route("/notifications", notificationsRouter)
 
 

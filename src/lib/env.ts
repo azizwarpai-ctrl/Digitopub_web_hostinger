@@ -63,6 +63,10 @@ const orcidEnvSchema = z.object({
   ORCID_REDIRECT_URI: optionalString,
 })
 
+const notifyEnvSchema = z.object({
+  NOTIFY_TOKEN_SECRET: requiredSecret("NOTIFY_TOKEN_SECRET"),
+})
+
 const flagsEnvSchema = z.object({
   ENABLE_ORCID_OJS_BACKFILL: booleanFromString.default(!isProduction),
   UIET_P1_ENABLED: booleanFromString.default(false),
@@ -88,6 +92,7 @@ export type MetricsEnv = z.infer<typeof metricsEnvSchema>
 export type IdentityEnv = z.infer<typeof identityEnvSchema>
 export type OrcidEnv = z.infer<typeof orcidEnvSchema>
 export type FlagsEnv = z.infer<typeof flagsEnvSchema>
+export type NotifyEnv = z.infer<typeof notifyEnvSchema>
 
 // ---------------------------------------------------------------------------
 // Cached, focused readers.
@@ -97,6 +102,7 @@ let cachedMetrics: MetricsEnv | null = null
 let cachedIdentity: IdentityEnv | null = null
 let cachedOrcid: OrcidEnv | null = null
 let cachedFlags: FlagsEnv | null = null
+let cachedNotify: NotifyEnv | null = null
 let cached: UietEnv | null = null
 
 function parseOrThrow<T>(schema: z.ZodType<T>, data: Record<string, unknown>, label: string): T {
@@ -125,6 +131,15 @@ export function getIdentityEnv(): IdentityEnv {
     IDENTITY_COOKIE_SECRET: process.env.IDENTITY_COOKIE_SECRET,
   }, "identity")
   return cachedIdentity
+}
+
+/** Signing secret for notification confirm/manage/unsubscribe links (separate from the identity cookie). */
+export function getNotifyEnv(): NotifyEnv {
+  if (cachedNotify) return cachedNotify
+  cachedNotify = parseOrThrow(notifyEnvSchema, {
+    NOTIFY_TOKEN_SECRET: process.env.NOTIFY_TOKEN_SECRET,
+  }, "notify")
+  return cachedNotify
 }
 
 export function getOrcidEnv(): OrcidEnv {
@@ -200,4 +215,5 @@ export function __resetEnvCacheForTests() {
   cachedIdentity = null
   cachedOrcid = null
   cachedFlags = null
+  cachedNotify = null
 }

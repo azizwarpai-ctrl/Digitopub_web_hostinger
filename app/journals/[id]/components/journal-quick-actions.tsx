@@ -11,15 +11,20 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { SubmitManuscriptButton } from "./submit-manuscript-button"
+import { GetAlertsButton } from "@/src/features/notifications/components/get-alerts-dialog"
 
 export interface JournalQuickActionsProps {
   submissionUrl?: string | null
   onTabChange: (tab: string) => void
+  journalId?: string
+  journalTitle?: string
 }
 
 export function JournalQuickActions({
   submissionUrl,
   onTabChange,
+  journalId,
+  journalTitle,
 }: JournalQuickActionsProps) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
@@ -35,6 +40,13 @@ export function JournalQuickActions({
           </span>
           <ArrowRight className="h-4 w-4" />
         </SubmitManuscriptButton>
+
+        <GetAlertsButton
+          journalId={journalId}
+          journalTitle={journalTitle}
+          variant="outline"
+          className="w-full justify-between border-border/60 hover:bg-muted/50"
+        />
 
         <Button
           variant="outline"

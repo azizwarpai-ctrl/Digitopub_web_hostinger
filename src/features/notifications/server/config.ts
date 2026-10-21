@@ -19,4 +19,16 @@ export function getImportMaxBytes(): number {
 export const CONSENT_VERSIONS = {
     import: "import-invite-v1",
     admin_manual: "admin-manual-v1",
+    public_form: "public-form-v1",
+    orcid_account: "orcid-account-v1",
 } as const
+
+export const SITE_NAME = "DigitoPub"
+
+/** Absolute base URL for links in emails (`NEXT_PUBLIC_APP_URL`, no trailing slash). */
+export function getAppBaseUrl(): string {
+    return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")
+}
+
+/** Unconfirmed (pending) subscribers are purged after this many days (#199). */
+export const PENDING_SUBSCRIBER_RETENTION_DAYS = 90

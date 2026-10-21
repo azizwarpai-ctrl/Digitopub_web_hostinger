@@ -712,6 +712,8 @@ model NotificationSubscriber {
   import_id            BigInt?
   confirm_token_hash   String?                @db.Char(64)
   confirm_expires_at   DateTime?
+  /// Embedded in signed manage/unsub/confirm links; bump to revoke them all.
+  token_version        Int                    @default(0)
   confirmed_at         DateTime?
   consent_text_version String                 @db.VarChar(32)
   consent_ip_hash      String?                @db.Char(64)

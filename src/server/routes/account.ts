@@ -1,10 +1,22 @@
 /**
- * Account self-service: GET /stats, DELETE /data.
- * Both require a valid digitopub_identity cookie.
+ * Account self-service: GET /stats, DELETE /data, and publication-alert
+ * management under /notifications (#199).
+ * All require a valid digitopub_identity cookie.
  */
 
 import { Hono } from "hono"
+import { zValidator } from "@hono/zod-validator"
 import { prisma } from "@/src/lib/db/config"
+import { checkRateLimit } from "@/src/lib/rate-limiter"
+import { NOTIFY_SUBSCRIBE_EMAIL_RATE_LIMIT, NOTIFY_SUBSCRIBE_IP_RATE_LIMIT } from "@/src/lib/rate-limiter-configs"
+import { clientIpFromHeaders } from "@/src/lib/ip-hash"
+import { accountSubscribeSchema } from "@/src/features/notifications/schemas/notification-schemas"
+import {
+    getAccountNotifications,
+    linkIdentity,
+    requestSubscription,
+} from "@/src/features/notifications/server/public-service"
+import { SUBSCRIBE_GENERIC_MESSAGE, consentIpHash, sendLater } from "@/src/server/routes/notifications-public"
 import {
     buildClearCookieHeader,
     getIdentity,
@@ -104,6 +116,16 @@ app.delete("/data", async (c) => {
         const linkRows = await tx.userOrcidLink.deleteMany({
             where: { orcid: identity.orcid },
         })
+        // Alert subscriptions linked to this ORCID iD or its verified email
+        // (interests, follows and deliveries cascade by FK).
+        const subscriberRows = await tx.notificationSubscriber.deleteMany({
+            where: {
+                OR: [
+                    { orcid: identity.orcid },
+                    ...(identity.email_hash ? [{ email_hash: identity.email_hash }] : []),
+                ],
+            },
+        })
         await tx.revokedOrcid.upsert({
             where: { orcid: identity.orcid },
             create: { orcid: identity.orcid, cookie_iat_min: now },
@@ -113,6 +135,7 @@ app.delete("/data", async (c) => {
             user_event_rows: userEventRows.count,
             user_metrics_rows: userMetricsRows.count,
             user_orcid_links_rows: linkRows.count,
+            notification_subscriber_rows: subscriberRows.count,
         }
     })
 
@@ -131,6 +154,50 @@ app.delete("/data", async (c) => {
             },
         }
     )
+})
+
+// ─── Publication alerts (#199) ────────────────────────────────────────
+
+app.get("/notifications", async (c) => {
+    const identity = await getIdentity(c.req.raw.headers)
+    if (!identity) return err("UNAUTHENTICATED", 401, "Sign in with ORCID.")
+    return c.json({ success: true, data: await getAccountNotifications(identity) })
+})
+
+app.post("/notifications/link", async (c) => {
+    const identity = await getIdentity(c.req.raw.headers)
+    if (!identity) return err("UNAUTHENTICATED", 401, "Sign in with ORCID.")
+    const linked = await linkIdentity(identity)
+    if (!linked) return err("NOTHING_TO_LINK", 404, "No alert subscription matches your verified email.")
+    return c.json({ success: true, data: await getAccountNotifications(identity) })
+})
+
+/** Same double opt-in as the public form; the confirmed row is linked to the ORCID iD. */
+app.post("/notifications/subscribe", zValidator("json", accountSubscribeSchema), async (c) => {
+    const identity = await getIdentity(c.req.raw.headers)
+    if (!identity) return err("UNAUTHENTICATED", 401, "Sign in with ORCID.")
+    const body = c.req.valid("json")
+    const generic = c.json({ success: true, message: SUBSCRIBE_GENERIC_MESSAGE }, 202)
+
+    const ip = clientIpFromHeaders(c.req.raw.headers)
+    const byIp = checkRateLimit(ip, NOTIFY_SUBSCRIBE_IP_RATE_LIMIT)
+    if (!byIp.allowed) return err("RATE_LIMITED", 429, "Too many requests. Please try again later.")
+    if (!checkRateLimit(body.email.trim().toLowerCase(), NOTIFY_SUBSCRIBE_EMAIL_RATE_LIMIT).allowed) return generic
+
+    try {
+        sendLater(await requestSubscription({
+            email: body.email,
+            name: body.name,
+            journal_ids: body.journal_ids,
+            discipline_ids: body.discipline_ids,
+            source: "orcid_account",
+            orcid: identity.orcid,
+            ipHash: consentIpHash(ip),
+        }))
+    } catch (e) {
+        console.error("[Notifications] account subscribe failed:", e instanceof Error ? e.message : e)
+    }
+    return generic
 })
 
 export { app as accountRouter }
