@@ -25,23 +25,31 @@ import { useGetEmailTemplates } from "@/src/features/email-templates/api/use-get
 import { useGetEmailStatus } from "@/src/features/email-templates/api/use-get-email-status"
 import { useDeleteEmailTemplate } from "@/src/features/email-templates/api/use-delete-email-template"
 import { useUpdateEmailTemplate } from "@/src/features/email-templates/api/use-update-email-template"
-import type { EmailTemplate } from "@/src/features/email-templates/types/email-template-type"
+import type { EmailTemplate, EmailTemplateCategory } from "@/src/features/email-templates/types/email-template-type"
 
 export default function EmailTemplatesPage() {
   const limit = 20
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("all")
+  const [category, setCategory] = useState<EmailTemplateCategory>("transactional")
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [updatingTemplateId, setUpdatingTemplateId] = useState<string | null>(null)
 
-  const { data: templatesData, isLoading: loading, isError, error } = useGetEmailTemplates(page, limit)
+  const { data: templatesData, isLoading: loading, isError, error } = useGetEmailTemplates(page, limit, undefined, category)
   const templates = templatesData?.data || []
   const pagination = templatesData?.pagination || null
   
   const { data: smtpStatus, isLoading: isSmtpLoading, isError: isSmtpError } = useGetEmailStatus()
   const deleteMutation = useDeleteEmailTemplate()
   const updateMutation = useUpdateEmailTemplate()
+
+  const handleCategoryChange = (value: string) => {
+    if (value === "transactional" || value === "notification") {
+      setCategory(value)
+      setPage(1)
+    }
+  }
 
   const handleDelete = () => {
     if (!deleteId || deleteMutation.isPending) return
@@ -165,6 +173,12 @@ export default function EmailTemplatesPage() {
           </div>
         </CardHeader>
         <CardContent>
+          <Tabs value={category} onValueChange={handleCategoryChange} className="mb-4 w-full">
+            <TabsList aria-label="Template category">
+              <TabsTrigger value="transactional">Transactional</TabsTrigger>
+              <TabsTrigger value="notification">Notification</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
@@ -191,6 +205,9 @@ export default function EmailTemplatesPage() {
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center gap-2">
                           <p className="font-medium font-mono text-sm">{template.name}</p>
+                          <Badge variant="outline" className="capitalize">
+                            {template.category}
+                          </Badge>
                           <Badge variant={template.is_active ? "default" : "secondary"}>
                             {template.is_active ? "Active" : "Inactive"}
                           </Badge>

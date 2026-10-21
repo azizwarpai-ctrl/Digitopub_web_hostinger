@@ -156,3 +156,10 @@ export async function ensureNotificationTemplate(
     })
     return row.id
 }
+
+export type TemplateDefaults = (typeof PLACEHOLDERS)[TemplateKey]
+
+/** The shipped version of a notification template, or null for other names. */
+export function getDefaultTemplate(name: string): TemplateDefaults | null {
+    return (PLACEHOLDERS as Record<string, TemplateDefaults>)[name] ?? null
+}

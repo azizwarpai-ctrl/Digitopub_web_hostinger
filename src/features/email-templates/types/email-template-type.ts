@@ -1,3 +1,18 @@
+export type EmailTemplateCategory = "transactional" | "notification"
+
+export interface SampleVariablesResponse {
+  variables: Record<string, string>
+  allowed_variables: string[]
+  raw_variables: string[]
+}
+
+export interface EmailTemplatePreviewResult {
+  subject: string
+  html: string
+  text: string | null
+  missingVariables: string[]
+}
+
 export interface EmailTemplate {
   id: string
   name: string
@@ -7,6 +22,7 @@ export interface EmailTemplate {
   variables: string[] | null
   description: string | null
   is_active: boolean
+  category: EmailTemplateCategory
   created_at: string
   updated_at: string
 }

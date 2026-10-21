@@ -12,17 +12,27 @@ import {
 } from "@/components/ui/form"
 import type { FieldValues, UseFormReturn, Path } from "react-hook-form"
 
+export type EditorFieldName = "subject" | "html_content" | "text_content"
+
 interface Props<T extends FieldValues> {
   form: UseFormReturn<T>
   previewHtml: string | null
   previewSubject: string | null
+  /** Optional help text shown under the description. */
+  helpNote?: string
+  /** Optional focus/blur tracking used by the variable palette. */
+  onFieldFocus?: (name: EditorFieldName, el: HTMLInputElement | HTMLTextAreaElement) => void
+  onFieldBlur?: (name: EditorFieldName, el: HTMLInputElement | HTMLTextAreaElement) => void
 }
 
 
 export function EmailContentCard<T extends FieldValues>({
   form,
   previewHtml,
-  previewSubject
+  previewSubject,
+  helpNote,
+  onFieldFocus,
+  onFieldBlur,
 }: Props<T>) {
   return (
     <Card>
@@ -31,6 +41,7 @@ export function EmailContentCard<T extends FieldValues>({
         <CardDescription>
           Use {"{{variableName}}"} syntax for dynamic content
         </CardDescription>
+        {helpNote && <p className="text-sm text-muted-foreground">{helpNote}</p>}
       </CardHeader>
       <CardContent className="space-y-4">
         <FormField
@@ -40,7 +51,15 @@ export function EmailContentCard<T extends FieldValues>({
             <FormItem>
               <FormLabel>Subject *</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="e.g. Welcome to DigitoPub, {{userName}}" />
+                <Input
+                  {...field}
+                  onFocus={(e) => onFieldFocus?.("subject", e.currentTarget)}
+                  onBlur={(e) => {
+                    field.onBlur()
+                    onFieldBlur?.("subject", e.currentTarget)
+                  }}
+                  placeholder="e.g. Welcome to DigitoPub, {{userName}}"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -63,6 +82,11 @@ export function EmailContentCard<T extends FieldValues>({
                   <FormControl>
                     <Textarea
                       {...field}
+                      onFocus={(e) => onFieldFocus?.("html_content", e.currentTarget)}
+                      onBlur={(e) => {
+                        field.onBlur()
+                        onFieldBlur?.("html_content", e.currentTarget)
+                      }}
                       className="min-h-[300px] font-mono text-sm"
                       placeholder="<h1>Hello {{userName}}</h1><p>Welcome to our platform...</p>"
                     />
@@ -83,6 +107,11 @@ export function EmailContentCard<T extends FieldValues>({
                     <Textarea
                       {...field}
                       value={field.value || ""}
+                      onFocus={(e) => onFieldFocus?.("text_content", e.currentTarget)}
+                      onBlur={(e) => {
+                        field.onBlur()
+                        onFieldBlur?.("text_content", e.currentTarget)
+                      }}
                       className="min-h-[300px] font-mono text-sm"
                       placeholder="Hello {{userName}}, Welcome to our platform..."
                     />

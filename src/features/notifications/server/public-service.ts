@@ -22,6 +22,7 @@ import {
 import type { ArticleFrequency, SubscriberSource } from "../constants"
 import { CONSENT_VERSIONS, SITE_NAME, getAppBaseUrl } from "./config"
 import { NOTIFICATION_TEMPLATE_KEYS, ensureNotificationTemplate, type TemplateKey } from "./templates"
+import { getSettings } from "./admin-config-service"
 
 type Subscriber = Prisma.NotificationSubscriberGetPayload<object>
 
@@ -138,7 +139,8 @@ export async function requestSubscription(input: SubscribeRequest): Promise<Emai
     if (existing && existing.status !== "pending" && existing.status !== "unsubscribed") return null
 
     const follows = await validFollows(input.journal_ids, input.discipline_ids)
-    const consent = CONSENT_VERSIONS[input.source]
+    // Public sign-ups record the admin-set wording version (bumped when the consent text changes).
+    const consent = input.source === "public_form" ? (await getSettings()).consent_text_version : CONSENT_VERSIONS[input.source]
     const expiresAt = new Date(Date.now() + CONFIRM_TOKEN_TTL_SECONDS * 1000)
 
     const subscriber = await prisma.$transaction(async (tx) => {

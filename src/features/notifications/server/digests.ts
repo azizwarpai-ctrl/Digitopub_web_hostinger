@@ -17,6 +17,7 @@ import type { ArticleSnapshot, CampaignPayload } from "../types/notification-typ
 import { loadActiveAudience, loadRules } from "./audience"
 import { effectiveRule, resolveDigest } from "./resolve-recipients"
 import { NOTIFICATION_TEMPLATE_KEYS, ensureNotificationTemplate } from "./templates"
+import { getSettings } from "./admin-config-service"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const WINDOW_KEYS = { daily: "notify_digest_daily_last", weekly: "notify_digest_weekly_last" } as const
@@ -104,9 +105,10 @@ export async function buildDigest(kind: DigestKind, now = new Date()): Promise<D
     return result
 }
 
-/** The 07:00 cron: daily every day, weekly on Mondays (UTC). */
+/** The 07:00 cron: daily every day, weekly on the configured UTC weekday (default Monday). */
 export async function runDigests(now = new Date()): Promise<DigestResult[]> {
     const out = [await buildDigest("daily", now)]
-    if (now.getUTCDay() === 1) out.push(await buildDigest("weekly", now))
+    const { weekly_digest_day } = await getSettings()
+    if (now.getUTCDay() === weekly_digest_day) out.push(await buildDigest("weekly", now))
     return out
 }
