@@ -30,6 +30,9 @@ model AdminUser {
   updated_settings     SystemSetting[]    @relation("UpdatedBy")
   uploaded_audios      ArticleAudio[]     @relation("UploadedBy")
   password_reset_tokens PasswordResetToken[]
+  subscriber_imports    SubscriberImport[]     @relation("ImportUploadedBy")
+  approved_campaigns    NotificationCampaign[] @relation("CampaignApprovedBy")
+  updated_notification_rules NotificationRule[] @relation("RuleUpdatedBy")
 
   @@index([email])
   @@map("admin_users")
@@ -64,6 +67,9 @@ model Journal {
   submissions        Submission[]
   ojs_snapshot       OjsJournalSnapshot?
   pricing_plans      PricingPlan[]
+  disciplines        JournalDiscipline[]
+  subscriber_follows SubscriberJournal[]
+  notification_rules NotificationRule[]
 
   @@index([field])
   @@index([status])
@@ -296,11 +302,16 @@ model EmailTemplate {
   variables    Json?
   description  String?    @db.Text
   is_active    Boolean    @default(true)
+  /// "transactional" (system mail) or "notification" (publication alerts).
+  category     String     @default("transactional") @db.VarChar(30)
   created_at   DateTime   @default(now())
   updated_at   DateTime   @default(now()) @updatedAt
   email_logs   EmailLog[]
+  notification_campaigns NotificationCampaign[]
+  notification_rules     NotificationRule[]
 
   @@index([is_active])
+  @@index([category])
   @@index([name])
   @@map("email_templates")
 }
@@ -631,4 +642,261 @@ model OjsJournalSnapshot {
   journal               Journal   @relation(fields: [journal_id], references: [id], onDelete: Cascade)
 
   @@map("ojs_journal_snapshots")
+}
+
+// =====================================================================
+// Publication notifications (epic #204)
+// =====================================================================
+// Status-like columns are VARCHAR, matching the rest of this schema (no
+// Prisma enums). Allowed values live in
+// `src/features/notifications/constants.ts`.
+
+/// Controlled research-discipline taxonomy. Disciplines form a tree via
+/// `parent_id`; `synonyms` (string[]) drives keyword and interest mapping.
+model Discipline {
+  id           BigInt                 @id @default(autoincrement())
+  slug         String                 @unique @db.VarChar(100)
+  name         String                 @db.VarChar(150)
+  parent_id    BigInt?
+  synonyms     Json
+  is_active    Boolean                @default(true)
+  sort_order   Int                    @default(0)
+  created_at   DateTime               @default(now())
+  updated_at   DateTime               @default(now()) @updatedAt
+  parent       Discipline?            @relation("DisciplineTree", fields: [parent_id], references: [id], onDelete: SetNull)
+  children     Discipline[]           @relation("DisciplineTree")
+  journals     JournalDiscipline[]
+  ojs_sections OjsSectionDiscipline[]
+  subscribers  SubscriberDiscipline[]
+  rules        NotificationRule[]
+
+  @@index([parent_id])
+  @@index([is_active, sort_order])
+  @@map("disciplines")
+}
+
+model JournalDiscipline {
+  journal_id    BigInt
+  discipline_id BigInt
+  journal       Journal    @relation(fields: [journal_id], references: [id], onDelete: Cascade)
+  discipline    Discipline @relation(fields: [discipline_id], references: [id], onDelete: Cascade)
+
+  @@id([journal_id, discipline_id])
+  @@index([discipline_id])
+  @@map("journal_disciplines")
+}
+
+/// Optional finer mapping: OJS `sections.section_id` -> discipline.
+model OjsSectionDiscipline {
+  ojs_section_id BigInt
+  discipline_id  BigInt
+  discipline     Discipline @relation(fields: [discipline_id], references: [id], onDelete: Cascade)
+
+  @@id([ojs_section_id, discipline_id])
+  @@index([discipline_id])
+  @@map("ojs_section_disciplines")
+}
+
+/// Opt-in alert recipient. Holds a plaintext email by design (double
+/// opt-in consent); erased by `/account/data` together with its
+/// interests, follows and deliveries (FK cascade).
+model NotificationSubscriber {
+  id                   BigInt                 @id @default(autoincrement())
+  email                String                 @unique @db.VarChar(255)
+  email_hash           String                 @db.Char(64)
+  name                 String?                @db.VarChar(255)
+  affiliation          String?                @db.VarChar(255)
+  orcid                String?                @db.VarChar(19)
+  status               String                 @default("pending") @db.VarChar(20)
+  source               String                 @db.VarChar(20)
+  import_id            BigInt?
+  confirm_token_hash   String?                @db.Char(64)
+  confirm_expires_at   DateTime?
+  confirmed_at         DateTime?
+  consent_text_version String                 @db.VarChar(32)
+  consent_ip_hash      String?                @db.Char(64)
+  article_frequency    String                 @default("weekly") @db.VarChar(10)
+  issue_alerts         Boolean                @default(true)
+  unsubscribed_at      DateTime?
+  last_sent_at         DateTime?
+  raw_interests        String?                @db.Text
+  created_at           DateTime               @default(now())
+  updated_at           DateTime               @default(now()) @updatedAt
+  import               SubscriberImport?      @relation(fields: [import_id], references: [id], onDelete: SetNull)
+  disciplines          SubscriberDiscipline[]
+  journals             SubscriberJournal[]
+  deliveries           NotificationDelivery[]
+
+  @@index([status])
+  @@index([email_hash])
+  @@index([orcid])
+  @@index([import_id])
+  @@map("notification_subscribers")
+}
+
+model SubscriberDiscipline {
+  subscriber_id BigInt
+  discipline_id BigInt
+  subscriber    NotificationSubscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+  discipline    Discipline             @relation(fields: [discipline_id], references: [id], onDelete: Cascade)
+
+  @@id([subscriber_id, discipline_id])
+  @@index([discipline_id])
+  @@map("subscriber_disciplines")
+}
+
+/// Explicit journal follows.
+model SubscriberJournal {
+  subscriber_id BigInt
+  journal_id    BigInt
+  subscriber    NotificationSubscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+  journal       Journal                @relation(fields: [journal_id], references: [id], onDelete: Cascade)
+
+  @@id([subscriber_id, journal_id])
+  @@index([journal_id])
+  @@map("subscriber_journals")
+}
+
+/// One uploaded researcher list. The raw file is never stored.
+model SubscriberImport {
+  id          BigInt                   @id @default(autoincrement())
+  file_name   String                   @db.VarChar(255)
+  file_type   String                   @db.VarChar(10)
+  uploaded_by BigInt
+  status      String                   @default("parsed") @db.VarChar(20)
+  totals      Json
+  column_map  Json
+  created_at  DateTime                 @default(now())
+  updated_at  DateTime                 @default(now()) @updatedAt
+  uploader    AdminUser                @relation("ImportUploadedBy", fields: [uploaded_by], references: [id])
+  rows        SubscriberImportRow[]
+  subscribers NotificationSubscriber[]
+
+  @@index([uploaded_by])
+  @@index([created_at])
+  @@map("subscriber_imports")
+}
+
+/// Staging rows for the import preview. Purged after 14 days.
+model SubscriberImportRow {
+  id                    BigInt           @id @default(autoincrement())
+  import_id             BigInt
+  row_no                Int
+  email                 String?          @db.VarChar(255)
+  name                  String?          @db.VarChar(255)
+  raw_interests         String?          @db.Text
+  mapped_discipline_ids Json
+  unmapped_terms        Json
+  issue                 String?          @db.VarChar(20)
+  created_at            DateTime         @default(now())
+  import                SubscriberImport @relation(fields: [import_id], references: [id], onDelete: Cascade)
+
+  @@unique([import_id, row_no])
+  @@index([import_id, issue])
+  @@index([created_at])
+  @@map("subscriber_import_rows")
+}
+
+/// Notification settings at global, journal or discipline scope.
+/// `scope_key` is "global", "journal:<id>" or "discipline:<id>". It exists
+/// because MySQL UNIQUE treats NULLs as distinct, so (scope, journal_id,
+/// discipline_id) could not enforce one rule per scope and event type.
+/// Precedence when resolving: journal -> discipline -> global.
+model NotificationRule {
+  id            BigInt         @id @default(autoincrement())
+  scope         String         @db.VarChar(20)
+  scope_key     String         @db.VarChar(40)
+  journal_id    BigInt?
+  discipline_id BigInt?
+  event_type    String         @db.VarChar(30)
+  enabled       Boolean        @default(true)
+  template_id   BigInt?
+  auto_draft    Boolean        @default(true)
+  updated_by    BigInt?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @default(now()) @updatedAt
+  journal       Journal?       @relation(fields: [journal_id], references: [id], onDelete: Cascade)
+  discipline    Discipline?    @relation(fields: [discipline_id], references: [id], onDelete: Cascade)
+  template      EmailTemplate? @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  updater       AdminUser?     @relation("RuleUpdatedBy", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@unique([scope_key, event_type])
+  @@index([journal_id])
+  @@index([discipline_id])
+  @@index([template_id])
+  @@index([updated_by])
+  @@map("notification_rules")
+}
+
+/// Ledger of OJS publications seen by the detector; each is recorded once.
+/// `dedupe_key` is "issue:<ojs_issue_id>" or "article:<ojs_submission_id>",
+/// keyed by submission so a new publication version is not re-announced.
+model PublicationEvent {
+  id                 BigInt                @id @default(autoincrement())
+  kind               String                @db.VarChar(10)
+  dedupe_key         String                @unique @db.VarChar(40)
+  ojs_journal_id     String                @db.VarChar(50)
+  ojs_issue_id       BigInt?
+  ojs_submission_id  BigInt?
+  ojs_publication_id BigInt?
+  published_at       DateTime
+  snapshot           Json
+  discipline_ids     Json
+  campaign_id        BigInt?
+  detected_at        DateTime              @default(now())
+  campaign           NotificationCampaign? @relation(fields: [campaign_id], references: [id], onDelete: SetNull)
+
+  @@index([published_at])
+  @@index([kind, published_at])
+  @@index([ojs_journal_id])
+  @@index([campaign_id])
+  @@map("publication_events")
+}
+
+model NotificationCampaign {
+  id                 BigInt                 @id @default(autoincrement())
+  type               String                 @db.VarChar(20)
+  status             String                 @default("draft") @db.VarChar(20)
+  template_id        BigInt
+  subject_override   String?                @db.VarChar(500)
+  payload            Json
+  recipient_estimate Int                    @default(0)
+  scheduled_at       DateTime?
+  approved_by        BigInt?
+  approved_at        DateTime?
+  sent_count         Int                    @default(0)
+  failed_count       Int                    @default(0)
+  created_at         DateTime               @default(now())
+  updated_at         DateTime               @default(now()) @updatedAt
+  template           EmailTemplate          @relation(fields: [template_id], references: [id])
+  approver           AdminUser?             @relation("CampaignApprovedBy", fields: [approved_by], references: [id], onDelete: SetNull)
+  events             PublicationEvent[]
+  deliveries         NotificationDelivery[]
+
+  @@index([status, scheduled_at])
+  @@index([type, created_at])
+  @@index([template_id])
+  @@index([approved_by])
+  @@map("notification_campaigns")
+}
+
+/// One recipient of one campaign. This table is the send queue.
+model NotificationDelivery {
+  id            BigInt                 @id @default(autoincrement())
+  campaign_id   BigInt
+  subscriber_id BigInt
+  status        String                 @default("queued") @db.VarChar(10)
+  attempts      Int                    @default(0)
+  last_error    String?                @db.Text
+  sent_at       DateTime?
+  created_at    DateTime               @default(now())
+  updated_at    DateTime               @default(now()) @updatedAt
+  campaign      NotificationCampaign   @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  subscriber    NotificationSubscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+
+  @@unique([campaign_id, subscriber_id])
+  @@index([campaign_id, status])
+  @@index([sent_at])
+  @@index([subscriber_id])
+  @@map("notification_deliveries")
 }
