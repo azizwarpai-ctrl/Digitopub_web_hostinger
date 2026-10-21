@@ -12,6 +12,7 @@ import {
     MailPlus,
     Settings,
     CreditCard,
+    BellRing,
     type LucideIcon,
 } from "lucide-react"
 
@@ -62,6 +63,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         items: [
             { title: "Messages", href: "/admin/messages", icon: Mail },
             { title: "Email Templates", href: "/admin/email-templates", icon: MailPlus },
+            { title: "Notifications", href: "/admin/notifications", icon: BellRing },
         ],
     },
     {

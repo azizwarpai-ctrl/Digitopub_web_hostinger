@@ -207,16 +207,19 @@ export async function updateUserMetrics(): Promise<{ upserted: number }> {
 
 const RETENTION_BATCH = 50_000
 const RETENTION_DAYS = 18 * 30 // ~18 months
+/** Subscriber-import staging rows only back the preview step (#197). */
+const IMPORT_STAGING_RETENTION_DAYS = 14
 
 /**
  * Hard-deletes `user_event` rows past the ~18-month retention window in
  * batches. `deadlineMs` is a soft wall-clock budget for the HTTP trigger
  * (shared-hosting request timeout); when exceeded the job returns
  * `completed: false` and the next scheduled run resumes where it left off.
+ * Also purges subscriber-import staging rows older than 14 days.
  */
 export async function retentionCleanup(
     opts: { deadlineMs?: number } = {}
-): Promise<{ cutoff: string; totalDeleted: number; completed: boolean }> {
+): Promise<{ cutoff: string; totalDeleted: number; completed: boolean; importRowsDeleted: number }> {
     const deadline = opts.deadlineMs ? Date.now() + opts.deadlineMs : null
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
     let totalDeleted = 0
@@ -237,5 +240,7 @@ export async function retentionCleanup(
         // Yield a moment before the next batch to keep replicas comfortable.
         await new Promise((r) => setTimeout(r, 250))
     }
-    return { cutoff: cutoff.toISOString(), totalDeleted, completed }
+    const stagingCutoff = new Date(Date.now() - IMPORT_STAGING_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const staging = await prisma.subscriberImportRow.deleteMany({ where: { created_at: { lt: stagingCutoff } } })
+    return { cutoff: cutoff.toISOString(), totalDeleted, completed, importRowsDeleted: staging.count }
 }

@@ -8,7 +8,7 @@
  *   4. Always upsert the digitopub-side UserOrcidLink cache.
  */
 
-import { createHash } from "node:crypto"
+import { emailHash } from "@/src/lib/email-hash"
 import { ojsQuery, isOjsConfigured } from "@/src/features/ojs/server/ojs-client"
 import { prisma } from "@/src/lib/db/config"
 import { writeOrcidToOjsWithAudit, isBackfillEnabled } from "@/src/lib/ojs-write-guard"
@@ -33,10 +33,6 @@ export interface LinkOjsUserResult {
     ojsBackfilled: boolean
 }
 
-function emailHash(email: string | null | undefined): string | null {
-    if (!email) return null
-    return createHash("sha256").update(email.trim().toLowerCase()).digest("hex")
-}
 
 export async function linkOjsUser(
     input: LinkOjsUserInput
