@@ -52,6 +52,8 @@ curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/
 curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/send
 ```
 
+Step-by-step cron-job.org setup for the three notification jobs: [`notifications-go-live.md`](./notifications-go-live.md), Step 5.
+
 If hPanel cron cannot run `curl` with headers, use cron-job.org (supports custom headers);
 the endpoints are safe to expose since they fail closed without the secret.
 

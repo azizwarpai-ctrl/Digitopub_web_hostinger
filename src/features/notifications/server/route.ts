@@ -48,12 +48,14 @@ import {
     campaignEditSchema,
     campaignListQuerySchema,
     campaignTestSchema,
+    deliverabilityTestSchema,
     disciplineCreateSchema,
     disciplineIdsSchema,
     disciplineUpdateSchema,
     ruleUpsertSchema,
     settingsSchema,
 } from "../schemas/notification-schemas"
+import { getReadiness, installDefaults, sendDeliverabilityTest, takeDeliverabilityTestSlot } from "./go-live-service"
 import { ImportParseError } from "./import/parse"
 import {
     applyTermMappings,
@@ -390,6 +392,19 @@ const app = new Hono()
         const session = c.get("session" as never) as { id: string }
         await saveSettings(c.req.valid("json"), BigInt(session.id))
         return c.json({ success: true, data: await getSettingsView(), message: "Settings saved" })
+    })
+
+    // ─── Go-live setup (no shell needed) ──────────────────────────────
+    .get("/settings/readiness", async (c) => c.json({ success: true, data: await getReadiness() }))
+    .post("/settings/install-defaults", async (c) =>
+        c.json({ success: true, data: await installDefaults(), message: "Starter data installed" }))
+    .post("/settings/deliverability-test", zValidator("json", deliverabilityTestSchema), async (c) => {
+        if (!takeDeliverabilityTestSlot()) {
+            return c.json({ success: false as const, error: "At most 10 deliverability tests per hour" }, 429)
+        }
+        const result = await sendDeliverabilityTest(c.req.valid("json").to)
+        if (!result.ok) return c.json({ success: false as const, error: result.error }, 502)
+        return c.json({ success: true, data: null, message: "Test email sent" })
     })
 
 export { app as notificationsRouter }

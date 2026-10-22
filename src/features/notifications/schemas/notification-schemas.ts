@@ -151,6 +151,8 @@ export const disciplineUpdateSchema = z.object({
 
 export const disciplineIdsSchema = z.object({ discipline_ids: z.array(idString).max(200) })
 
+export const deliverabilityTestSchema = z.object({ to: z.email().max(255) })
+
 export const settingsSchema = z.object({
     publisher_address: z.string().trim().max(500).optional(),
     weekly_digest_day: z.number().int().min(0).max(6).optional(),
