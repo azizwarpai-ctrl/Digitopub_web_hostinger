@@ -11,6 +11,7 @@ import { notificationFromAddress } from "@/src/lib/email/notification-transport"
 
 import { ruleScopeKey, type RuleEventType, type RuleScope } from "../constants"
 import { getSendLimits } from "./config"
+import { DEFAULT_EMAIL_STYLE, getEmailStyle, type EmailStyle, type EmailStyleKey } from "./email-styles"
 
 // ─── Settings ─────────────────────────────────────────────────────────
 
@@ -23,18 +24,27 @@ export interface NotificationSettings {
     weekly_digest_day: number
     /** Recorded on new public sign-ups; bump when the consent wording changes. */
     consent_text_version: string
+    /** Design of every notification email (style gallery). */
+    email_style: EmailStyleKey
 }
 
 export const DEFAULT_SETTINGS: NotificationSettings = {
     publisher_address: "",
     weekly_digest_day: 1,
     consent_text_version: "public-form-v1",
+    email_style: DEFAULT_EMAIL_STYLE,
 }
 
 export async function getSettings(): Promise<NotificationSettings> {
     const row = await prisma.systemSetting.findUnique({ where: { setting_key: SETTINGS_KEY }, select: { setting_value: true } })
     const stored = row?.setting_value && typeof row.setting_value === "object" ? (row.setting_value as Partial<NotificationSettings>) : {}
-    return { ...DEFAULT_SETTINGS, ...stored }
+    const merged = { ...DEFAULT_SETTINGS, ...stored }
+    return { ...merged, email_style: getEmailStyle(merged.email_style).key }
+}
+
+/** The style every notification email is currently drawn in. */
+export async function getActiveEmailStyle(): Promise<EmailStyle> {
+    return getEmailStyle((await getSettings()).email_style)
 }
 
 export async function saveSettings(input: Partial<NotificationSettings>, adminId: bigint): Promise<NotificationSettings> {

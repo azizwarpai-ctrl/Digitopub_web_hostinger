@@ -9,6 +9,7 @@ import { renderHtmlTemplate, renderTemplate, extractVariables, validateVariables
 import { RAW_BLOCK_VARIABLES } from "@/src/features/notifications/server/render-blocks"
 import { sampleVariables } from "@/src/features/notifications/server/sample-data"
 import { getDefaultTemplate } from "@/src/features/notifications/server/templates"
+import { getActiveEmailStyle } from "@/src/features/notifications/server/admin-config-service"
 import { sendEmail, getEmailServiceStatus } from "@/src/lib/email/service"
 import {
   emailTemplateCreateSchema,
@@ -459,7 +460,7 @@ app.get("/:id/sample-variables", requireAdmin, zValidator("param", emailTemplate
   return c.json({
     success: true,
     data: {
-      variables: sampleVariables(template.name),
+      variables: sampleVariables(template.name, await getActiveEmailStyle()),
       allowed_variables: Array.isArray(template.variables) ? template.variables : [],
       raw_variables: rawFor(template),
     },
@@ -471,7 +472,7 @@ app.post("/:id/reset", requireAdmin, zValidator("param", emailTemplateIdParamSch
   const id = BigInt(c.req.valid("param").id)
   const template = await prisma.emailTemplate.findUnique({ where: { id }, select: { name: true } })
   if (!template) return c.json({ success: false, error: "Template not found" }, 404)
-  const defaults = getDefaultTemplate(template.name)
+  const defaults = getDefaultTemplate(template.name, await getActiveEmailStyle())
   if (!defaults) return c.json({ success: false, error: "This template has no shipped default" }, 409)
   const updated = await prisma.emailTemplate.update({
     where: { id },

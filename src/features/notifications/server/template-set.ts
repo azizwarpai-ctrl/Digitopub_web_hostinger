@@ -1,14 +1,17 @@
 /**
- * The academic notification template set (#203). One shared design system:
- * a 600 px table layout with inline CSS (Outlook, Gmail, Apple Mail), navy
- * #1F3A5F accents on ivory #FAF8F3, Georgia headings, a hidden preheader,
- * a dark-mode variant, and a compliant footer on every message (why you
- * receive it, manage preferences, unsubscribe, postal address, privacy).
+ * The academic notification template set (#203). One shared structure: a
+ * 600 px table layout with inline CSS (Outlook, Gmail, Apple Mail), a hidden
+ * preheader, a dark-mode variant, and a compliant footer on every message
+ * (why you receive it, manage preferences, unsubscribe, postal address,
+ * privacy). Colours and fonts come from the active email style
+ * (email-styles.ts); Classic, navy on ivory with Georgia headings, is the default.
  *
  * Tone: formal, concise, neutral; no exclamation marks or superlatives.
  * Values are inserted with {{name}} (HTML-escaped); only the server-built
  * blocks toc_html, articles_html and editor_note_html use {{{ }}}.
  */
+
+import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
 
 export interface TemplateDefinition {
     subject: string
@@ -19,35 +22,6 @@ export interface TemplateDefinition {
 }
 
 const COMMON_VARIABLES = ["site_name", "site_url", "recipient_name", "manage_url", "unsubscribe_url", "publisher_address", "privacy_url", "preheader"]
-
-const C = {
-    navy: "#1F3A5F",
-    ivory: "#FAF8F3",
-    ink: "#2B2B2B",
-    muted: "#5A5A5A",
-    rule: "#E3DED3",
-    white: "#FFFFFF",
-}
-
-const SERIF = "Georgia,'Times New Roman',Times,serif"
-const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-
-/** Bulletproof table button with a visible plain-link fallback underneath. */
-function button(label: string, hrefVar: string): string {
-    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px">
-  <tr><td class="btn" bgcolor="${C.navy}" style="border-radius:4px">
-    <a href="{{${hrefVar}}}" style="display:inline-block;padding:13px 26px;font-family:${SANS};font-size:15px;font-weight:600;color:${C.white};text-decoration:none;border-radius:4px">${label}</a>
-  </td></tr>
-</table>
-<p style="margin:0 0 4px;font-family:${SANS};font-size:12px;line-height:1.5;color:${C.muted}">If the button does not work, copy this link into your browser:<br><a href="{{${hrefVar}}}" style="color:${C.navy};word-break:break-all">{{${hrefVar}}}</a></p>`
-}
-
-const h1 = (text: string) =>
-    `<h1 class="ink" style="margin:0 0 18px;font-family:${SERIF};font-size:24px;line-height:1.3;font-weight:normal;color:${C.ink}">${text}</h1>`
-const p = (text: string) =>
-    `<p class="ink" style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.6;color:${C.ink}">${text}</p>`
-const small = (text: string) =>
-    `<p class="muted" style="margin:16px 0 0;font-family:${SANS};font-size:13px;line-height:1.6;color:${C.muted}">${text}</p>`
 
 interface LayoutOptions {
     /** Masthead line 1 (journal title or site wordmark) and optional line 2 (ISSN). */
@@ -60,11 +34,40 @@ interface LayoutOptions {
     showManage?: boolean
 }
 
-function layout(o: LayoutOptions): string {
-    const manage = o.showManage === false
-        ? ""
-        : `<a href="{{manage_url}}" style="color:${C.navy}">Manage preferences</a> &nbsp;·&nbsp; <a href="{{unsubscribe_url}}" style="color:${C.navy}">Unsubscribe</a> &nbsp;·&nbsp; `
-    return `<!DOCTYPE html>
+function textFooter(reason: string, showManage = true): string {
+    return `--
+${reason}
+${showManage ? "Manage preferences: {{manage_url}}\nUnsubscribe: {{unsubscribe_url}}\n" : ""}Privacy policy: {{privacy_url}}
+{{publisher_address}}`
+}
+
+/** The building blocks of every template, drawn in one style. */
+function styleKit(s: EmailStyle) {
+    const C = s.colors
+    const SANS = s.fonts.body
+
+    /** Bulletproof table button with a visible plain-link fallback underneath. */
+    const button = (label: string, hrefVar: string): string =>
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px">
+  <tr><td class="btn" bgcolor="${C.accent}" style="border-radius:${s.buttonRadius}">
+    <a href="{{${hrefVar}}}" style="display:inline-block;padding:13px 26px;font-family:${SANS};font-size:15px;font-weight:600;color:${C.buttonText};text-decoration:none;border-radius:${s.buttonRadius}">${label}</a>
+  </td></tr>
+</table>
+<p style="margin:0 0 4px;font-family:${SANS};font-size:12px;line-height:1.5;color:${C.muted}">If the button does not work, copy this link into your browser:<br><a href="{{${hrefVar}}}" style="color:${C.accent};word-break:break-all">{{${hrefVar}}}</a></p>`
+
+    const h1 = (text: string) =>
+        `<h1 class="ink" style="margin:0 0 18px;font-family:${s.fonts.heading};font-size:24px;line-height:1.3;font-weight:${s.headingWeight};color:${C.ink}">${text}</h1>`
+    const p = (text: string) =>
+        `<p class="ink" style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.6;color:${C.ink}">${text}</p>`
+    const small = (text: string) =>
+        `<p class="muted" style="margin:16px 0 0;font-family:${SANS};font-size:13px;line-height:1.6;color:${C.muted}">${text}</p>`
+
+    function layout(o: LayoutOptions): string {
+        const manage = o.showManage === false
+            ? ""
+            : `<a href="{{manage_url}}" style="color:${C.accent}">Manage preferences</a> &nbsp;·&nbsp; <a href="{{unsubscribe_url}}" style="color:${C.accent}">Unsubscribe</a> &nbsp;·&nbsp; `
+        const d = s.dark
+        return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8">
@@ -74,31 +77,31 @@ function layout(o: LayoutOptions): string {
 <title>{{site_name}}</title>
 <style>
   @media (prefers-color-scheme: dark) {
-    .bg { background:#14171C !important; }
-    .card { background:#1E232B !important; border-color:#2E3540 !important; }
-    .ink { color:#E8E6E1 !important; }
-    .muted { color:#A9AFB8 !important; }
-    .mast { color:#E8E6E1 !important; border-color:#2E3540 !important; }
-    .btn { background:#4C7BB3 !important; }
-    a { color:#8DB3E2 !important; }
+    .bg { background:${d.bg} !important; }
+    .card { background:${d.card} !important; border-color:${d.border} !important; }
+    .ink { color:${d.ink} !important; }
+    .muted { color:${d.muted} !important; }
+    .mast { ${d.mast} }
+    .btn { background:${d.button} !important; }
+    a { color:${d.link} !important; }
   }
   @media (max-width:620px) { .wrap { width:100% !important; } .pad { padding:24px 20px !important; } }
 </style>
 </head>
-<body class="bg" style="margin:0;padding:0;background:${C.ivory}">
+<body class="bg" style="margin:0;padding:0;background:${C.page}">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">{{preheader}}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg" style="background:${C.ivory}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg" style="background:${C.page}">
   <tr><td align="center" style="padding:32px 12px">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:600px;max-width:600px">
-      <tr><td class="mast" style="padding:0 0 14px;border-bottom:2px solid ${C.navy};font-family:${SERIF};font-size:20px;color:${C.navy}">
+      <tr><td class="mast" style="${s.mastCss}">
         ${o.masthead}${o.mastheadSub ? `<div class="muted" style="font-family:${SANS};font-size:12px;letter-spacing:.06em;color:${C.muted};margin-top:4px">${o.mastheadSub}</div>` : ""}
       </td></tr>
-      <tr><td class="card pad" style="background:${C.white};border:1px solid ${C.rule};border-top:0;padding:36px 40px">
+      <tr><td class="card pad" style="${s.cardCss}">
         ${o.body}
       </td></tr>
       <tr><td style="padding:22px 8px 0;font-family:${SANS};font-size:12px;line-height:1.6;color:${C.muted}" class="muted">
         ${o.reason}<br>
-        ${manage}<a href="{{privacy_url}}" style="color:${C.navy}">Privacy policy</a><br>
+        ${manage}<a href="{{privacy_url}}" style="color:${C.accent}">Privacy policy</a><br>
         {{publisher_address}}
       </td></tr>
     </table>
@@ -106,18 +109,18 @@ function layout(o: LayoutOptions): string {
 </table>
 </body>
 </html>`
+    }
+
+    const mastLink = (hrefVar: string, label: string) =>
+        `<a href="{{${hrefVar}}}" style="color:${s.mastLink};text-decoration:none">${label}</a>`
+
+    return { C, SANS, button, h1, p, small, layout, mastLink, SITE_MAST: mastLink("site_url", "{{site_name}}") }
 }
 
-function textFooter(reason: string, showManage = true): string {
-    return `--
-${reason}
-${showManage ? "Manage preferences: {{manage_url}}\nUnsubscribe: {{unsubscribe_url}}\n" : ""}Privacy policy: {{privacy_url}}
-{{publisher_address}}`
-}
-
-const SITE_MAST = `<a href="{{site_url}}" style="color:${C.navy};text-decoration:none">{{site_name}}</a>`
-
-export const TEMPLATE_SET: Record<string, TemplateDefinition> = {
+/** The seven notification templates drawn in `style`. Wording and variables are the same in every style. */
+export function buildTemplateSet(style: EmailStyle): Record<string, TemplateDefinition> {
+    const { C, SANS, button, h1, p, small, layout, mastLink, SITE_MAST } = styleKit(style)
+    return {
     notify_subscription_confirm: {
         subject: "Confirm your publication alerts from {{site_name}}",
         description: "Double opt-in confirmation for public and ORCID-account sign-ups.",
@@ -218,7 +221,7 @@ ${textFooter("You are receiving this message because you confirmed your subscrip
         description: "New issue alert with the table of contents, grouped by section.",
         variables: [...COMMON_VARIABLES, "journal_title", "journal_issn", "journal_issn_line", "journal_url", "volume", "number", "year", "issue_title", "cover_url", "editor_note", "editor_note_html", "issue_url", "toc_html", "toc_text"],
         html_content: layout({
-            masthead: `<a href="{{journal_url}}" style="color:${C.navy};text-decoration:none">{{journal_title}}</a>`,
+            masthead: mastLink("journal_url", "{{journal_title}}"),
             mastheadSub: "{{journal_issn_line}}",
             reason: "You are receiving this message because you follow {{journal_title}} or one of its disciplines on {{site_name}}.",
             body: [
@@ -327,3 +330,7 @@ If you did not make this change, you can restore your preferences from the link 
 ${textFooter("You are receiving this message because the alert preferences for this address were changed.")}`,
     },
 }
+}
+
+/** The shipped Classic set (the default style). */
+export const TEMPLATE_SET: Record<string, TemplateDefinition> = buildTemplateSet(EMAIL_STYLES.classic)

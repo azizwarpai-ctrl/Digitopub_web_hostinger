@@ -15,6 +15,7 @@ import type { ArticleSnapshot, CampaignPayload, IssueSnapshot } from "../types/n
 import { SITE_NAME, getAppBaseUrl } from "./config"
 import { manageUrl } from "./public-service"
 import { getSettings } from "./admin-config-service"
+import { getEmailStyle, type EmailStyle } from "./email-styles"
 import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
 
@@ -27,6 +28,8 @@ export interface ComposeContext {
     disciplineNames: Map<string, string>
     /** Footer postal address from the notification settings. */
     publisherAddress: string
+    /** Active email style; the server-built blocks are drawn in it. */
+    style: EmailStyle
 }
 
 export interface ComposeSubscriber extends AudienceSubscriber {
@@ -53,6 +56,7 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
         rules,
         disciplineNames: new Map(disciplines.map((d) => [d.id.toString(), d.name])),
         publisherAddress: settings.publisher_address,
+        style: getEmailStyle(settings.email_style),
     }
 }
 
@@ -102,13 +106,13 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
             const ev = [...ctx.events.values()].find((e) => e.kind === "issue")
             if (!ev) return null
             const issue = ev.snapshot as unknown as IssueSnapshot
-            const toc = buildToc(issue)
+            const toc = buildToc(issue, ctx.style)
             return {
                 ...vars,
                 journal_title: issue.journal_title,
                 journal_issn: issue.journal_issn ?? "",
                 journal_issn_line: issue.journal_issn ? `ISSN ${issue.journal_issn}` : "",
-                editor_note_html: buildEditorNote(payload.editor_note),
+                editor_note_html: buildEditorNote(payload.editor_note, ctx.style),
                 volume: issue.volume?.toString() ?? "",
                 number: issue.number ?? "",
                 year: issue.year?.toString() ?? "",
@@ -144,7 +148,7 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
             const counts = new Map<string, number>()
             for (const i of items) if (i.disciplineName) counts.set(i.disciplineName, (counts.get(i.disciplineName) ?? 0) + 1)
             const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n]) => n)
-            const blocks = buildArticles(items)
+            const blocks = buildArticles(items, ctx.style)
             return {
                 ...vars,
                 count: String(items.length),

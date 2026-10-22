@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BookOpen,
   Mail,
+  Palette,
   Send,
   Settings,
   SlidersHorizontal,
@@ -52,6 +53,12 @@ const SECTIONS: { href: string; title: string; description: string; icon: Lucide
     title: "Disciplines",
     description: "Maintain the discipline taxonomy and assign disciplines to journals and sections.",
     icon: BookOpen,
+  },
+  {
+    href: "/admin/notifications/styles",
+    title: "Email style",
+    description: "Preview ready-made email designs and apply one to every publication alert.",
+    icon: Palette,
   },
   {
     href: "/admin/notifications/settings",

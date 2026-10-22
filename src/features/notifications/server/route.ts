@@ -44,6 +44,7 @@ import {
     upsertRule,
 } from "./admin-config-service"
 import {
+    applyStyleSchema,
     campaignApproveSchema,
     campaignEditSchema,
     campaignListQuerySchema,
@@ -52,10 +53,13 @@ import {
     disciplineCreateSchema,
     disciplineIdsSchema,
     disciplineUpdateSchema,
+    emailStyleParamSchema,
     ruleUpsertSchema,
     settingsSchema,
+    stylePreviewQuerySchema,
 } from "../schemas/notification-schemas"
 import { getReadiness, installDefaults, sendDeliverabilityTest, takeDeliverabilityTestSlot } from "./go-live-service"
+import { applyStyle, listStyles, previewStyle } from "./style-gallery-service"
 import { ImportParseError } from "./import/parse"
 import {
     applyTermMappings,
@@ -405,6 +409,16 @@ const app = new Hono()
         const result = await sendDeliverabilityTest(c.req.valid("json").to)
         if (!result.ok) return c.json({ success: false as const, error: result.error }, 502)
         return c.json({ success: true, data: null, message: "Test email sent" })
+    })
+
+    // ─── Email style gallery ──────────────────────────────────────────
+    .get("/styles", async (c) => c.json({ success: true, data: await listStyles() }))
+    .get("/styles/:key/preview", zValidator("param", emailStyleParamSchema), zValidator("query", stylePreviewQuerySchema), async (c) =>
+        c.json({ success: true, data: await previewStyle(c.req.valid("param").key, c.req.valid("query").template) }))
+    .post("/styles/:key/apply", zValidator("param", emailStyleParamSchema), zValidator("json", applyStyleSchema), async (c) => {
+        const session = c.get("session" as never) as { id: string }
+        const result = await applyStyle(c.req.valid("param").key, c.req.valid("json"), BigInt(session.id))
+        return c.json({ success: true, data: result, message: "Email style applied" })
     })
 
 export { app as notificationsRouter }
