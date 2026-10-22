@@ -9,8 +9,9 @@ export function useConfirmImport() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ id }: { id: string }) => {
-      const res = await client.notifications.imports[":id"].confirm.$post({ param: { id } })
+    /** journal_id: a journal id, null for "General", or absent to keep the stored assignment. */
+    mutationFn: async ({ id, journal_id }: { id: string; journal_id?: string | null }) => {
+      const res = await client.notifications.imports[":id"].confirm.$post({ param: { id }, json: { journal_id } })
       return parseRpcResponse<{ data: { created: number }; message?: string }>(res, "Failed to confirm import")
     },
     onSuccess: (_data, variables) => {

@@ -21,6 +21,8 @@ const db = {
     imports: [] as Row[],
     importRows: [] as Row[],
     links: [] as Array<{ subscriber_id: bigint; discipline_id: bigint }>,
+    follows: [] as Array<{ subscriber_id: bigint; journal_id: bigint }>,
+    journals: [] as Row[],
     templates: [] as Row[],
     campaigns: [] as Row[],
 }
@@ -80,6 +82,13 @@ const prismaMock = {
             const before = db.importRows.length
             db.importRows = db.importRows.filter((r) => !matches(r, where))
             return { count: before - db.importRows.length }
+        }),
+    },
+    journal: { findUnique: vi.fn(async ({ where }: any) => byId(db.journals, where.id)) },
+    subscriberJournal: {
+        createMany: vi.fn(async ({ data }: any) => {
+            db.follows.push(...data)
+            return { count: data.length }
         }),
     },
     subscriberDiscipline: {
@@ -142,6 +151,8 @@ beforeEach(() => {
     db.imports = []
     db.importRows = []
     db.links = []
+    db.follows = []
+    db.journals = [{ id: 10n, title: "Journal of Orthodontic Research", status: "active" }, { id: 11n, title: "Old Journal", status: "inactive" }]
     db.templates = []
     db.campaigns = []
 })
@@ -202,10 +213,48 @@ describe("import flow: upload → rows → mapping → confirm", () => {
             [added[0].id, 1n], [added[0].id, 3n], [added[1].id, 3n],
         ])
         expect(db.templates[0]).toMatchObject({ name: "notify_import_invitation", category: "notification" })
+        // No body keeps the stored assignment: General, so no journal follows and no journal on the invitation.
+        expect(db.follows).toEqual([])
+        expect(body.data.campaign.payload).toEqual({ import_id: String(created.id) })
 
         // A second confirm is refused.
         const again = await app().request(`/notifications/imports/${created.id}/confirm`, { method: "POST" })
         expect(again.status).toBe(409)
+    })
+
+    it("assigns a list to a journal: new people follow it and the invitation carries the journal", async () => {
+        const created = (await (await upload("/imports", "l.csv", CSV)).json()).data
+        const confirm = (journal_id: string | null) => app().request(`/notifications/imports/${created.id}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ journal_id }),
+        })
+        // Unknown and inactive journals are refused before anything is created.
+        expect((await confirm("99")).status).toBe(409)
+        expect((await confirm("11")).status).toBe(409)
+        expect(db.subscribers.filter((s) => s.source === "import")).toHaveLength(0)
+
+        const res = await confirm("10")
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        const added = db.subscribers.filter((s) => s.source === "import")
+        expect(db.follows).toEqual(added.map((s) => ({ subscriber_id: s.id, journal_id: 10n })))
+        // The existing subscriber in the file is left alone.
+        expect(db.follows.some((f) => f.subscriber_id === 1n)).toBe(false)
+        expect(byId(db.imports, BigInt(created.id))!.journal_id).toBe(10n)
+        expect(body.data.campaign.payload).toEqual({ import_id: String(created.id), journal_id: "10" })
+    })
+
+    it("confirms a General list explicitly", async () => {
+        const created = (await (await upload("/imports", "l.csv", CSV)).json()).data
+        const res = await app().request(`/notifications/imports/${created.id}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ journal_id: null }),
+        })
+        expect(res.status).toBe(200)
+        expect(byId(db.imports, BigInt(created.id))!.journal_id).toBeNull()
+        expect(db.follows).toEqual([])
     })
 
     it("re-importing after a mapping auto-maps the learned term", async () => {

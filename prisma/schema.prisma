@@ -70,6 +70,7 @@ model Journal {
   disciplines        JournalDiscipline[]
   subscriber_follows SubscriberJournal[]
   notification_rules NotificationRule[]
+  subscriber_imports SubscriberImport[]
 
   @@index([field])
   @@index([status])
@@ -768,13 +769,17 @@ model SubscriberImport {
   status      String                   @default("parsed") @db.VarChar(20)
   totals      Json
   column_map  Json
+  /// Journal the list is assigned to; null = "General" (matched by discipline across all journals).
+  journal_id  BigInt?
   created_at  DateTime                 @default(now())
   updated_at  DateTime                 @default(now()) @updatedAt
   uploader    AdminUser                @relation("ImportUploadedBy", fields: [uploaded_by], references: [id])
+  journal     Journal?                 @relation(fields: [journal_id], references: [id], onDelete: SetNull)
   rows        SubscriberImportRow[]
   subscribers NotificationSubscriber[]
 
   @@index([uploaded_by])
+  @@index([journal_id])
   @@index([created_at])
   @@map("subscriber_imports")
 }

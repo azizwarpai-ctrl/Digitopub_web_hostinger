@@ -30,6 +30,9 @@ export interface SubscriberImport {
   totals: ImportTotals | null
   created_at: string
   uploader?: { full_name: string | null; email: string } | null
+  /** Journal the list is assigned to; null means "General". */
+  journal_id?: string | null
+  journal?: { id: string; title: string } | null
   unmapped_terms?: UnmappedTerm[]
 }
 

@@ -13,10 +13,22 @@ import { cleanSenderName } from "@/src/lib/email/sender-display-name"
 
 import type { CampaignPayload, IssueSnapshot } from "../types/notification-types"
 
-/** The automatic sender name, or null for the default. */
+/** Title of the campaign's journal (`payload.journal_id`), or null. */
+export async function campaignJournalTitle(campaign: Pick<NotificationCampaign, "payload">): Promise<string | null> {
+    const id = ((campaign.payload ?? {}) as CampaignPayload).journal_id
+    if (!id) return null
+    const journal = await prisma.journal.findUnique({ where: { id: BigInt(id) }, select: { title: true } })
+    return journal?.title ?? null
+}
+
+/**
+ * The automatic sender name, or null for the default. Pass `journalTitle`
+ * when it is already loaded to skip the lookup.
+ */
 export async function automaticSenderName(
     campaign: Pick<NotificationCampaign, "type" | "payload">,
     events: Iterable<PublicationEvent> = [],
+    journalTitle?: string | null,
 ): Promise<string | null> {
     const payload = (campaign.payload ?? {}) as CampaignPayload
     if (campaign.type === "issue") {
@@ -26,15 +38,15 @@ export async function automaticSenderName(
         }
     }
     if (!payload.journal_id) return null
-    const journal = await prisma.journal.findUnique({ where: { id: BigInt(payload.journal_id) }, select: { title: true } })
-    return cleanSenderName(journal?.title) || null
+    return cleanSenderName(journalTitle === undefined ? await campaignJournalTitle(campaign) : journalTitle) || null
 }
 
 /** The admin's choice when set, otherwise the automatic name (null = default). */
 export async function senderNameFor(
     campaign: Pick<NotificationCampaign, "type" | "payload">,
     events: Iterable<PublicationEvent> = [],
+    journalTitle?: string | null,
 ): Promise<string | null> {
     const chosen = cleanSenderName(((campaign.payload ?? {}) as CampaignPayload).from_name)
-    return chosen || automaticSenderName(campaign, events)
+    return chosen || automaticSenderName(campaign, events, journalTitle)
 }

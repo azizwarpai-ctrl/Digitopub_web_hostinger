@@ -38,6 +38,7 @@ function buildWhere(q: SubscriberListQuery): Prisma.NotificationSubscriberWhereI
     if (q.source) where.source = q.source
     if (q.discipline_id) where.disciplines = { some: { discipline_id: BigInt(q.discipline_id) } }
     if (q.journal_id) where.journals = { some: { journal_id: BigInt(q.journal_id) } }
+    if (q.import_id) where.import_id = BigInt(q.import_id)
     if (q.q) where.OR = [{ email: { contains: q.q.toLowerCase() } }, { name: { contains: q.q } }]
     return where
 }

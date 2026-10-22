@@ -63,6 +63,7 @@ export default function ImportsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>File</TableHead>
+                  <TableHead>Assigned to</TableHead>
                   <TableHead>Uploaded by</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -79,6 +80,9 @@ export default function ImportsPage() {
                   <TableRow key={imp.id}>
                     <TableCell className="max-w-[220px] truncate font-medium" title={imp.file_name}>
                       {imp.file_name}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate" title={imp.journal?.title}>
+                      {imp.journal?.title ?? (imp.status === "parsed" ? "Not yet assigned" : "General")}
                     </TableCell>
                     <TableCell>{imp.uploader?.full_name || imp.uploader?.email || "Unknown"}</TableCell>
                     <TableCell>{new Date(imp.created_at).toLocaleString()}</TableCell>

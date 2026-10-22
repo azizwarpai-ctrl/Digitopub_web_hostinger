@@ -52,6 +52,7 @@ import { useCreateSubscriber } from "@/src/features/notifications/api/use-create
 import { useUpdateSubscriber } from "@/src/features/notifications/api/use-update-subscriber"
 import { useDeleteSubscriber } from "@/src/features/notifications/api/use-delete-subscriber"
 import { useGetJournals } from "@/src/features/journals/api/use-get-journals"
+import { useGetImports } from "@/src/features/notifications/api/use-get-imports"
 
 const ALL = "all"
 
@@ -436,6 +437,8 @@ export default function SubscribersPage() {
 
   const { data: disciplines } = useGetDisciplines()
   const { data: journals } = useGetJournals()
+  const { data: importPage } = useGetImports(1, 100)
+  const lists = (importPage?.data ?? []).filter((i) => i.status === "confirmed")
   const { data, isLoading, isError, error } = useGetSubscribers(filters, page, limit)
   const subscribers = data?.data ?? []
   const pagination = data?.pagination
@@ -502,7 +505,7 @@ export default function SubscribersPage() {
           <CardDescription>Select a row to edit a subscriber. The CSV export honors the filters below.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <div className="space-y-1.5">
               <Label htmlFor="filter-q">Search</Label>
               <Input
@@ -523,6 +526,11 @@ export default function SubscribersPage() {
               "journal_id",
               "Journal",
               (journals ?? []).map((j) => ({ value: j.id, label: j.title })),
+            )}
+            {filterSelect(
+              "import_id",
+              "Uploaded list",
+              lists.map((i) => ({ value: i.id, label: `${i.file_name} (${i.journal?.title ?? "General"})` })),
             )}
           </div>
 

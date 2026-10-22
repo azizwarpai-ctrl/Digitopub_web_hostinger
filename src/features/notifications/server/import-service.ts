@@ -177,16 +177,28 @@ export async function applyTermMappings(importId: bigint, mappings: Array<{ term
     return { ...updated, unmapped_terms: await unmappedTermSummary(importId) }
 }
 
+/** A journal a list can be assigned to; throws when it does not exist or is inactive. */
+async function requireAssignableJournal(journalId: bigint) {
+    const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, status: true } })
+    if (!journal || journal.status !== "active") throw new ImportStateError("Choose an active journal, or General.")
+}
+
 /**
  * Creates `pending` subscribers for every valid row and one draft invitation
  * campaign. Sends nothing. Existing subscribers (including suppressed ones)
  * are never modified: the insert skips any email that already exists.
+ *
+ * `journalId` assigns the list: a journal id, null for "General", or
+ * undefined to keep the assignment already stored (e.g. an OJS-author list).
+ * People created from a journal list follow that journal, so once they
+ * confirm they receive its issue alerts and count as its members.
  */
-export async function confirmImport(importId: bigint) {
+export async function confirmImport(importId: bigint, opts: { journalId?: bigint | null } = {}) {
+    if (opts.journalId) await requireAssignableJournal(opts.journalId)
     // Claim the import atomically so a double-click cannot confirm twice.
     const claimed = await prisma.subscriberImport.updateMany({
         where: { id: importId, status: "parsed" },
-        data: { status: "confirmed" },
+        data: { status: "confirmed", ...(opts.journalId !== undefined ? { journal_id: opts.journalId } : {}) },
     })
     if (claimed.count === 0) {
         const imp = await prisma.subscriberImport.findUnique({ where: { id: importId }, select: { status: true } })
@@ -195,6 +207,10 @@ export async function confirmImport(importId: bigint) {
     }
 
     try {
+        const { journal_id: journalId } = await prisma.subscriberImport.findUniqueOrThrow({
+            where: { id: importId },
+            select: { journal_id: true },
+        })
         const rows = await prisma.subscriberImportRow.findMany({
             where: { import_id: importId, issue: null },
             select: { email: true, name: true, raw_interests: true, mapped_discipline_ids: true },
@@ -230,6 +246,12 @@ export async function confirmImport(importId: bigint) {
                 return sid ? synonymsOf(r.mapped_discipline_ids).map((d) => ({ subscriber_id: sid, discipline_id: BigInt(d) })) : []
             })
             if (links.length) await prisma.subscriberDiscipline.createMany({ data: links, skipDuplicates: true })
+            if (journalId && subs.length) {
+                await prisma.subscriberJournal.createMany({
+                    data: subs.map((s) => ({ subscriber_id: s.id, journal_id: journalId })),
+                    skipDuplicates: true,
+                })
+            }
         }
 
         const templateId = await ensureNotificationTemplate(prisma, NOTIFICATION_TEMPLATE_KEYS.importInvitation)
@@ -238,7 +260,7 @@ export async function confirmImport(importId: bigint) {
                 type: "invitation",
                 status: "draft",
                 template_id: templateId,
-                payload: { import_id: importId.toString() },
+                payload: { import_id: importId.toString(), ...(journalId ? { journal_id: journalId.toString() } : {}) },
                 recipient_estimate: created,
             },
         })
@@ -269,7 +291,10 @@ export async function listImports(offset: number, limit: number) {
             orderBy: { created_at: "desc" },
             skip: offset,
             take: limit,
-            include: { uploader: { select: { id: true, full_name: true, email: true } } },
+            include: {
+                uploader: { select: { id: true, full_name: true, email: true } },
+                journal: { select: { id: true, title: true } },
+            },
         }),
         prisma.subscriberImport.count(),
     ])
@@ -279,7 +304,10 @@ export async function listImports(offset: number, limit: number) {
 export async function getImport(importId: bigint) {
     const imp = await prisma.subscriberImport.findUnique({
         where: { id: importId },
-        include: { uploader: { select: { id: true, full_name: true, email: true } } },
+        include: {
+            uploader: { select: { id: true, full_name: true, email: true } },
+            journal: { select: { id: true, title: true } },
+        },
     })
     if (!imp) return null
     return { ...imp, unmapped_terms: await unmappedTermSummary(importId) }
