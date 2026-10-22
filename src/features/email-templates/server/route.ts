@@ -5,7 +5,10 @@ import { parsePagination, paginatedResponse } from "@/src/lib/pagination"
 import { serializeRecord, serializeMany } from "@/src/lib/serialize"
 import { prisma } from "@/src/lib/db/config"
 import { Prisma } from "@prisma/client"
-import { renderTemplate, extractVariables, validateVariables } from "@/src/lib/email/renderer"
+import { renderHtmlTemplate, renderTemplate, extractVariables, validateVariables } from "@/src/lib/email/renderer"
+import { RAW_BLOCK_VARIABLES } from "@/src/features/notifications/server/render-blocks"
+import { sampleVariables } from "@/src/features/notifications/server/sample-data"
+import { getDefaultTemplate } from "@/src/features/notifications/server/templates"
 import { sendEmail, getEmailServiceStatus } from "@/src/lib/email/service"
 import {
   emailTemplateCreateSchema,
@@ -17,6 +20,9 @@ import {
 
 const app = new Hono()
 
+/** Notification templates may insert server-built blocks raw ({{{toc_html}}}); nothing else can. */
+const rawFor = (t: { category: string }) => (t.category === "notification" ? RAW_BLOCK_VARIABLES : [])
+
 const TEMPLATE_SELECT = {
   id: true,
   name: true,
@@ -26,6 +32,7 @@ const TEMPLATE_SELECT = {
   variables: true,
   description: true,
   is_active: true,
+  category: true,
   created_at: true,
   updated_at: true,
 } as const
@@ -35,12 +42,20 @@ app.get("/", requireAdmin, async (c) => {
   try {
     const pagination = parsePagination(c)
     const activeFilter = c.req.query("active")
-    let where = {}
+    const categoryFilter = c.req.query("category")
+    const where: Prisma.EmailTemplateWhereInput = {}
     if (activeFilter !== undefined) {
       if (activeFilter === "true" || activeFilter === "false") {
-        where = { is_active: activeFilter === "true" }
+        where.is_active = activeFilter === "true"
       } else {
         return c.json({ success: false, error: "Invalid active value. Use 'true' or 'false'." }, 400)
+      }
+    }
+    if (categoryFilter !== undefined) {
+      if (categoryFilter === "transactional" || categoryFilter === "notification") {
+        where.category = categoryFilter
+      } else {
+        return c.json({ success: false, error: "Invalid category. Use 'transactional' or 'notification'." }, 400)
       }
     }
 
@@ -164,6 +179,7 @@ app.post("/", requireAdmin, zValidator("json", emailTemplateCreateSchema), async
         data: {
           name: data.name,
           subject: data.subject,
+          ...(data.category ? { category: data.category } : {}),
           html_content: data.html_content,
           text_content: data.text_content || null,
           variables: variables,
@@ -224,6 +240,7 @@ app.patch(
       const updateData: Record<string, any> = {}
       if (data.name !== undefined) updateData.name = data.name
       if (data.subject !== undefined) updateData.subject = data.subject
+      if (data.category !== undefined) updateData.category = data.category
       if (data.text_content !== undefined) updateData.text_content = data.text_content
       
       if (data.html_content !== undefined || data.subject !== undefined || data.text_content !== undefined) {
@@ -328,7 +345,7 @@ app.post(
       const missingVars = validateVariables(combinedContentForValidation, variables)
 
       const renderedSubject = renderTemplate(template.subject, variables)
-      const renderedHtml = renderTemplate(template.html_content, variables)
+      const renderedHtml = renderHtmlTemplate(template.html_content, variables, rawFor(template))
       const renderedText = template.text_content
         ? renderTemplate(template.text_content, variables)
         : null
@@ -387,7 +404,7 @@ app.post(
 
       // Render template
       const renderedSubject = renderTemplate(`[TEST] ${template.subject}`, variables)
-      const renderedHtml = renderTemplate(template.html_content, variables)
+      const renderedHtml = renderHtmlTemplate(template.html_content, variables, rawFor(template))
       const renderedText = template.text_content
         ? renderTemplate(template.text_content, variables)
         : undefined
@@ -431,5 +448,37 @@ app.post(
     }
   }
 )
+
+// GET /email-templates/:id/sample-variables - Realistic fixture values for previews (admin only)
+app.get("/:id/sample-variables", requireAdmin, zValidator("param", emailTemplateIdParamSchema), async (c) => {
+  const template = await prisma.emailTemplate.findUnique({
+    where: { id: BigInt(c.req.valid("param").id) },
+    select: { name: true, variables: true, category: true },
+  })
+  if (!template) return c.json({ success: false, error: "Template not found" }, 404)
+  return c.json({
+    success: true,
+    data: {
+      variables: sampleVariables(template.name),
+      allowed_variables: Array.isArray(template.variables) ? template.variables : [],
+      raw_variables: rawFor(template),
+    },
+  }, 200)
+})
+
+// POST /email-templates/:id/reset - Restore a shipped notification template (admin only)
+app.post("/:id/reset", requireAdmin, zValidator("param", emailTemplateIdParamSchema), async (c) => {
+  const id = BigInt(c.req.valid("param").id)
+  const template = await prisma.emailTemplate.findUnique({ where: { id }, select: { name: true } })
+  if (!template) return c.json({ success: false, error: "Template not found" }, 404)
+  const defaults = getDefaultTemplate(template.name)
+  if (!defaults) return c.json({ success: false, error: "This template has no shipped default" }, 409)
+  const updated = await prisma.emailTemplate.update({
+    where: { id },
+    data: { ...defaults, category: "notification", is_active: true },
+    select: TEMPLATE_SELECT,
+  })
+  return c.json({ success: true, data: serializeRecord(updated), message: "Template restored to its default" }, 200)
+})
 
 export { app as emailTemplateRouter }

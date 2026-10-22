@@ -1,5 +1,11 @@
 import { z } from "zod"
 
+/** {{{name}}} (raw HTML) is only allowed for server-built notification blocks. */
+const RAW_ALLOWED = ["toc_html", "articles_html"]
+const rawVariablesOk = (html: string | undefined | null) =>
+  !html || [...html.matchAll(/\{\{\{(\w+)\}\}\}/g)].every((m) => RAW_ALLOWED.includes(m[1]))
+const RAW_MESSAGE = `Triple braces {{{…}}} are only allowed for: ${RAW_ALLOWED.join(", ")}. Use {{name}} for everything else.`
+
 export const emailTemplateCreateSchema = z.object({
   name: z
     .string()
@@ -12,7 +18,8 @@ export const emailTemplateCreateSchema = z.object({
   variables: z.array(z.string()).optional(),
   description: z.string().max(2000).optional(),
   is_active: z.boolean().optional().default(true),
-})
+  category: z.enum(["transactional", "notification"]).optional(),
+}).refine((v) => rawVariablesOk(v.html_content), { message: RAW_MESSAGE, path: ["html_content"] })
 
 export const emailTemplateUpdateSchema = z.object({
   name: z
@@ -27,7 +34,8 @@ export const emailTemplateUpdateSchema = z.object({
   variables: z.array(z.string()).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   is_active: z.boolean().optional(),
-})
+  category: z.enum(["transactional", "notification"]).optional(),
+}).refine((v) => rawVariablesOk(v.html_content), { message: RAW_MESSAGE, path: ["html_content"] })
 
 export const emailTemplateIdParamSchema = z.object({
   id: z.string().regex(/^\d+$/, "Invalid template ID"),

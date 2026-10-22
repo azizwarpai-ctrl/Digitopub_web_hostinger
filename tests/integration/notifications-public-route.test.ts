@@ -88,6 +88,7 @@ const prismaMock: any = {
             select?.discipline ? { discipline: db.disciplines.find((d) => d.id === r.discipline_id) } : r)),
     },
     emailTemplate: { upsert: vi.fn(async () => ({ id: 1n })) },
+    systemSetting: { findUnique: vi.fn(async () => null) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prismaMock)),
 }
 // Getter: vi.mock is hoisted above prismaMock, so resolve it lazily.

@@ -17,6 +17,43 @@ import {
 } from "../schemas/notification-schemas"
 import { getImportMaxBytes } from "./config"
 import { campaignProgress, cancelCampaign, pauseCampaign, resumeCampaign } from "./send-service"
+import {
+    CampaignStateError,
+    approveCampaign,
+    getCampaignDetail,
+    getOverview,
+    listCampaigns,
+    previewCampaign,
+    sendCampaignTest,
+    updateDraft,
+} from "./campaign-service"
+import {
+    DisciplineInputError,
+    RuleInputError,
+    createDiscipline,
+    deleteRule,
+    getSettingsView,
+    listAllDisciplines,
+    listJournalMappings,
+    listRules,
+    listSectionMappings,
+    saveSettings,
+    setJournalDisciplines,
+    setSectionDisciplines,
+    updateDiscipline,
+    upsertRule,
+} from "./admin-config-service"
+import {
+    campaignApproveSchema,
+    campaignEditSchema,
+    campaignListQuerySchema,
+    campaignTestSchema,
+    disciplineCreateSchema,
+    disciplineIdsSchema,
+    disciplineUpdateSchema,
+    ruleUpsertSchema,
+    settingsSchema,
+} from "../schemas/notification-schemas"
 import { ImportParseError } from "./import/parse"
 import {
     applyTermMappings,
@@ -241,6 +278,118 @@ const app = new Hono()
         const p = await campaignProgress(BigInt(c.req.valid("param").id))
         if (!p) return fail(c, "Campaign not found", 404)
         return c.json({ success: true, data: p })
+    })
+
+    // ─── Overview & campaign review (#202) ────────────────────────────
+    .get("/overview", async (c) => c.json({ success: true, data: serializeRecord(await getOverview()) }))
+    .get("/campaigns", zValidator("query", campaignListQuerySchema), async (c) => {
+        const pagination = parsePagination(c)
+        const { rows, total } = await listCampaigns(c.req.valid("query"), pagination.offset, pagination.limit)
+        return c.json(paginatedResponse(serializeMany(rows), total, pagination))
+    })
+    .get("/campaigns/:id", zValidator("param", idParamSchema), async (c) => {
+        const detail = await getCampaignDetail(BigInt(c.req.valid("param").id))
+        if (!detail) return fail(c, "Campaign not found", 404)
+        return c.json({ success: true, data: serializeRecord(detail) })
+    })
+    .get("/campaigns/:id/preview", zValidator("param", idParamSchema), async (c) => {
+        const preview = await previewCampaign(BigInt(c.req.valid("param").id))
+        if (!preview) return fail(c, "Campaign not found", 404)
+        return c.json({ success: true, data: preview })
+    })
+    .patch("/campaigns/:id", zValidator("param", idParamSchema), zValidator("json", campaignEditSchema), async (c) => {
+        try {
+            const r = await updateDraft(BigInt(c.req.valid("param").id), c.req.valid("json"))
+            if (!r) return fail(c, "Campaign not found", 404)
+            return c.json({ success: true, data: serializeRecord(r) })
+        } catch (e) {
+            if (e instanceof CampaignStateError) return fail(c, e.message, 409)
+            throw e
+        }
+    })
+    .post("/campaigns/:id/test", zValidator("param", idParamSchema), zValidator("json", campaignTestSchema), async (c) => {
+        const session = c.get("session" as never) as { email: string; full_name?: string }
+        const to = c.req.valid("json").to || session.email
+        try {
+            const r = await sendCampaignTest(BigInt(c.req.valid("param").id), to, session.full_name || "Colleague")
+            if (!r) return fail(c, "Campaign not found", 404)
+            if (!r.ok) return c.json({ success: false, error: r.error }, 502)
+            return c.json({ success: true, message: `Test sent to ${to}` })
+        } catch (e) {
+            if (e instanceof CampaignStateError) return fail(c, e.message, 409)
+            throw e
+        }
+    })
+    .post("/campaigns/:id/approve", zValidator("param", idParamSchema), zValidator("json", campaignApproveSchema), async (c) => {
+        const session = c.get("session" as never) as { id: string }
+        const at = c.req.valid("json").scheduled_at
+        try {
+            const r = await approveCampaign(BigInt(c.req.valid("param").id), BigInt(session.id), at ? new Date(at) : null)
+            if (!r) return fail(c, "Campaign not found", 404)
+            return c.json({ success: true, data: r, message: r.status === "scheduled" ? "Campaign scheduled" : "Campaign queued for sending" })
+        } catch (e) {
+            if (e instanceof CampaignStateError) return fail(c, e.message, 409)
+            throw e
+        }
+    })
+
+    // ─── Rules ────────────────────────────────────────────────────────
+    .get("/rules", async (c) => c.json({ success: true, data: serializeMany(await listRules()) }))
+    .put("/rules", zValidator("json", ruleUpsertSchema), async (c) => {
+        const session = c.get("session" as never) as { id: string }
+        try {
+            const rule = await upsertRule(c.req.valid("json"), BigInt(session.id))
+            return c.json({ success: true, data: serializeRecord(rule) })
+        } catch (e) {
+            if (e instanceof RuleInputError) return fail(c, e.message, 400)
+            throw e
+        }
+    })
+    .delete("/rules/:id", zValidator("param", idParamSchema), async (c) => {
+        const r = await deleteRule(BigInt(c.req.valid("param").id))
+        if (r === "not_found") return fail(c, "Rule not found", 404)
+        if (r === "global") return fail(c, "Global rules can be switched off but not deleted", 409)
+        return c.json({ success: true, data: null, message: "Rule deleted" })
+    })
+
+    // ─── Taxonomy ─────────────────────────────────────────────────────
+    .get("/taxonomy", async (c) => {
+        const [disciplines, journals, sections] = await Promise.all([listAllDisciplines(), listJournalMappings(), listSectionMappings()])
+        return c.json({ success: true, data: serializeRecord({ disciplines, journals, sections }) })
+    })
+    .post("/disciplines", zValidator("json", disciplineCreateSchema), async (c) => {
+        try {
+            return c.json({ success: true, data: serializeRecord(await createDiscipline(c.req.valid("json"))) }, 201)
+        } catch (e) {
+            if (e instanceof DisciplineInputError) return fail(c, e.message, 409)
+            throw e
+        }
+    })
+    .patch("/disciplines/:id", zValidator("param", idParamSchema), zValidator("json", disciplineUpdateSchema), async (c) => {
+        try {
+            const d = await updateDiscipline(BigInt(c.req.valid("param").id), c.req.valid("json"))
+            if (!d) return fail(c, "Discipline not found", 404)
+            return c.json({ success: true, data: serializeRecord(d) })
+        } catch (e) {
+            if (e instanceof DisciplineInputError) return fail(c, e.message, 409)
+            throw e
+        }
+    })
+    .put("/journals/:id/disciplines", zValidator("param", idParamSchema), zValidator("json", disciplineIdsSchema), async (c) => {
+        await setJournalDisciplines(BigInt(c.req.valid("param").id), c.req.valid("json").discipline_ids)
+        return c.json({ success: true, data: null, message: "Journal disciplines saved" })
+    })
+    .put("/sections/:id/disciplines", zValidator("param", idParamSchema), zValidator("json", disciplineIdsSchema), async (c) => {
+        await setSectionDisciplines(BigInt(c.req.valid("param").id), c.req.valid("json").discipline_ids)
+        return c.json({ success: true, data: null, message: "Section disciplines saved" })
+    })
+
+    // ─── Settings ─────────────────────────────────────────────────────
+    .get("/settings", async (c) => c.json({ success: true, data: await getSettingsView() }))
+    .put("/settings", zValidator("json", settingsSchema), async (c) => {
+        const session = c.get("session" as never) as { id: string }
+        await saveSettings(c.req.valid("json"), BigInt(session.id))
+        return c.json({ success: true, data: await getSettingsView(), message: "Settings saved" })
     })
 
 export { app as notificationsRouter }

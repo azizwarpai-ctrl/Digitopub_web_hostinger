@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { TemplateDetailsCard } from "@/src/features/email-templates/components/template-details-card"
 import { EmailContentCard } from "@/src/features/email-templates/components/email-content-card"
+import { TemplateCategoryField } from "@/src/features/email-templates/components/template-category-field"
 import { TemplateVariablesCard } from "@/src/features/email-templates/components/template-variables-card"
 import { TemplateActionsCard } from "@/src/features/email-templates/components/template-actions-card"
 import { useCreateEmailTemplate } from "@/src/features/email-templates/api/use-create-email-template"
@@ -88,6 +89,7 @@ export function NewTemplateForm() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
+            <TemplateCategoryField form={form} />
             <TemplateDetailsCard form={form} />
             <EmailContentCard 
               form={form} 

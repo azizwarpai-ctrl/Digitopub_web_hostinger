@@ -14,6 +14,7 @@ import { CONFIRM_TOKEN_TTL_SECONDS, hashNotifyToken, signNotifyToken } from "@/s
 import type { ArticleSnapshot, CampaignPayload, IssueSnapshot } from "../types/notification-types"
 import { SITE_NAME, getAppBaseUrl } from "./config"
 import { manageUrl } from "./public-service"
+import { getSettings } from "./admin-config-service"
 import { RAW_BLOCK_VARIABLES, buildArticles, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
 
@@ -24,6 +25,8 @@ export interface ComposeContext {
     events: Map<string, PublicationEvent>
     rules: RuleLike[]
     disciplineNames: Map<string, string>
+    /** Footer postal address from the notification settings. */
+    publisherAddress: string
 }
 
 export interface ComposeSubscriber extends AudienceSubscriber {
@@ -37,10 +40,11 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
     const payload = campaign.payload as unknown as CampaignPayload
     const excluded = new Set(payload.excluded_event_ids ?? [])
     const ids = (payload.event_ids ?? []).filter((id) => !excluded.has(id)).map(BigInt)
-    const [template, events, disciplines] = await Promise.all([
+    const [template, events, disciplines, settings] = await Promise.all([
         prisma.emailTemplate.findUniqueOrThrow({ where: { id: campaign.template_id } }),
         ids.length ? prisma.publicationEvent.findMany({ where: { id: { in: ids } }, orderBy: { published_at: "asc" } }) : [],
         prisma.discipline.findMany({ select: { id: true, name: true } }),
+        getSettings(),
     ])
     return {
         campaign,
@@ -48,6 +52,7 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
         events: new Map(events.map((e) => [e.id.toString(), e])),
         rules,
         disciplineNames: new Map(disciplines.map((d) => [d.id.toString(), d.name])),
+        publisherAddress: settings.publisher_address,
     }
 }
 
@@ -84,6 +89,7 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
         unsubscribe_url: pageUnsubscribe,
         privacy_url: `${getAppBaseUrl()}/privacy`,
         editor_note: payload.editor_note ?? "",
+        publisher_address: ctx.publisherAddress,
     }
 
     switch (ctx.campaign.type) {
@@ -147,10 +153,13 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
             // A fresh single-use confirm link; it supersedes any earlier one.
             const token = signNotifyToken({ purpose: "confirm", subscriberId: s.id, version: s.token_version })
             const expires = new Date(Date.now() + CONFIRM_TOKEN_TTL_SECONDS * 1000)
-            await prisma.notificationSubscriber.update({
-                where: { id: s.id },
-                data: { confirm_token_hash: hashNotifyToken(token), confirm_expires_at: expires },
-            })
+            // id 0 is the admin preview / test recipient: nothing to store.
+            if (s.id !== BigInt(0)) {
+                await prisma.notificationSubscriber.update({
+                    where: { id: s.id },
+                    data: { confirm_token_hash: hashNotifyToken(token), confirm_expires_at: expires },
+                })
+            }
             const first = s.discipline_ids[0] ? ctx.disciplineNames.get(String(s.discipline_ids[0])) : undefined
             return {
                 ...vars,

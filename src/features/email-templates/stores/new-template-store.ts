@@ -20,6 +20,7 @@ const DEFAULT_FORM_DATA: EmailTemplateCreate = {
   text_content: "",
   description: "",
   is_active: true,
+  category: "transactional",
 }
 
 export const useNewTemplateStore = create<NewTemplateStore>()(

@@ -68,6 +68,7 @@ const prismaMock: any = {
     emailTemplate: { findUniqueOrThrow: vi.fn(async () => template) },
     publicationEvent: { findMany: vi.fn(async ({ where }: any) => db.events.filter((e) => where.id.in.includes(e.id))) },
     discipline: { findMany: vi.fn(async () => []) },
+    systemSetting: { findUnique: vi.fn(async () => ({ setting_value: { publisher_address: "1 Example St" } })) },
 }
 vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
 
