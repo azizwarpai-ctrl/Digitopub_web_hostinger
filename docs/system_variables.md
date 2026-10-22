@@ -59,6 +59,17 @@ Only required if integrating with an Open Journal Systems instance. The pool is 
 | `MAX_FILE_SIZE_MB` | Maximum upload file size in MB | `50` | Upload handlers |
 | `NOTIFICATIONS_ENABLED` | Kill switch for publication-alert crons (detect, digests, send). Anything other than `true` makes them no-ops | `false` | `src/features/notifications/server/config.ts` |
 | `NOTIFY_IMPORT_MAX_ROWS` | Maximum data rows per uploaded notification subscriber list | `10000` | `src/features/notifications/server/config.ts` |
+| `NOTIFY_SMTP_HOST` | SMTP host for publication-alert mail | Falls back to `SMTP_HOST` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_SMTP_PORT` | SMTP port for publication-alert mail | Falls back to `SMTP_PORT` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_SMTP_SECURE` | TLS mode for publication-alert mail | Falls back to `SMTP_SECURE` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_SMTP_USER` | SMTP user for the alerts sender mailbox | Falls back to `SMTP_USER` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_SMTP_PASSWORD` | SMTP password for the alerts sender mailbox | Falls back to `SMTP_PASSWORD` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_SMTP_FROM_EMAIL` | From address for publication-alert mail (e.g. `alerts@digitopub.com`) | Falls back to `SMTP_FROM_EMAIL` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_FROM_NAME` | Display name in the From header of alert mail | `DigitoPub Alerts` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_MAX_PER_RUN` | Maximum alert emails sent per send-cron run | `20` | `src/features/notifications/server/config.ts` |
+| `NOTIFY_MAX_PER_HOUR` | Maximum alert emails sent per hour. Set to about 80% of the hosting plan's SMTP limit | `60` | `src/features/notifications/server/config.ts` |
+| `NOTIFY_MAX_PER_DAY` | Maximum alert emails sent per day. Set to about 80% of the hosting plan's SMTP limit | `300` | `src/features/notifications/server/config.ts` |
+| `NOTIFY_UNSUBSCRIBE_MAILTO` | Optional mailbox for the `mailto:` entry in the List-Unsubscribe header. Unset, only the https one-click URL is sent | Unset | `src/lib/email/notification-transport.ts` |
 | `ALLOWED_FILE_TYPES` | Comma-separated allowed extensions | `pdf,doc,docx,txt,jpg,png` | Upload handlers |
 | `UPLOAD_DIR` | Directory for file uploads | `./uploads` | Upload handlers |
 

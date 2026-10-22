@@ -16,6 +16,7 @@ import {
     termMappingSchema,
 } from "../schemas/notification-schemas"
 import { getImportMaxBytes } from "./config"
+import { campaignProgress, cancelCampaign, pauseCampaign, resumeCampaign } from "./send-service"
 import { ImportParseError } from "./import/parse"
 import {
     applyTermMappings,
@@ -221,6 +222,25 @@ const app = new Hono()
         const ok = await deleteSubscriber(BigInt(c.req.valid("param").id))
         if (!ok) return fail(c, "Subscriber not found", 404)
         return c.json({ success: true, data: null, message: "Subscriber deleted" })
+    })
+
+    // ─── Campaign send controls (#201) ────────────────────────────────
+    .post("/campaigns/:id/pause", zValidator("param", idParamSchema), async (c) => {
+        const r = await pauseCampaign(BigInt(c.req.valid("param").id))
+        return r.ok ? c.json({ success: true, data: { status: r.status } }) : fail(c, r.error, 409)
+    })
+    .post("/campaigns/:id/resume", zValidator("param", idParamSchema), async (c) => {
+        const r = await resumeCampaign(BigInt(c.req.valid("param").id))
+        return r.ok ? c.json({ success: true, data: { status: r.status } }) : fail(c, r.error, 409)
+    })
+    .post("/campaigns/:id/cancel", zValidator("param", idParamSchema), async (c) => {
+        const r = await cancelCampaign(BigInt(c.req.valid("param").id))
+        return r.ok ? c.json({ success: true, data: { status: r.status } }) : fail(c, r.error, 409)
+    })
+    .get("/campaigns/:id/progress", zValidator("param", idParamSchema), async (c) => {
+        const p = await campaignProgress(BigInt(c.req.valid("param").id))
+        if (!p) return fail(c, "Campaign not found", 404)
+        return c.json({ success: true, data: p })
     })
 
 export { app as notificationsRouter }

@@ -39,7 +39,10 @@ export interface IssueSnapshot {
 
 /** `NotificationCampaign.payload`. */
 export interface CampaignPayload {
-    event_ids: string[]
+    /** Publication events covered (issue and digest campaigns). */
+    event_ids?: string[]
+    /** Source import (invitation campaigns): recipients are its pending subscribers. */
+    import_id?: string
     /** Digest window (ISO), for digest campaigns. */
     window?: { from: string; to: string }
     /** Local journal id, for issue campaigns. */

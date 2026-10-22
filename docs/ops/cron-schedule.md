@@ -22,6 +22,7 @@ Every endpoint:
 | Event retention cleanup | `POST /api/metrics/cron/retention` | `0 5 * * 0` | ~18-month retention. 50 s soft deadline per run; 207 = more to delete next week (or run again). Also purges notification import staging (14 d) and never-confirmed alert subscribers (90 d). |
 | Publication detection | `POST /api/notifications/cron/detect` | `*/30 * * * *` | New OJS issues/articles → `publication_events` + **draft** issue campaigns (never sends). First run only stores the watermark. 207 = more than 200 candidates, continues next run. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
 | Article digests | `POST /api/notifications/cron/digests` | `0 7 * * *` | Daily digest draft every day; weekly digest draft on Mondays (UTC). Contiguous windows. Same kill switch. |
+| Notification send queue | `POST /api/notifications/cron/send` | `*/5 * * * *` | Sends queued publication-alert emails within `NOTIFY_MAX_PER_RUN`, `NOTIFY_MAX_PER_HOUR` and `NOTIFY_MAX_PER_DAY`. 207 = deliveries still queued, 200 = queue empty. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
 
 ## Exact commands (hPanel cron / external scheduler)
 
@@ -46,6 +47,9 @@ curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/
 
 # daily 07:00 UTC (daily digest; weekly digest on Mondays)
 curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/digests
+
+# every 5 minutes (send queue; throttled)
+curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/send
 ```
 
 If hPanel cron cannot run `curl` with headers, use cron-job.org (supports custom headers);
@@ -64,6 +68,7 @@ bun run scripts/update-user-metrics.ts
 bun run scripts/retention-cleanup.ts
 bun run scripts/notifications-detect.ts
 bun run scripts/notifications-digests.ts
+bun run scripts/notifications-send.ts
 ```
 
 ## Observability

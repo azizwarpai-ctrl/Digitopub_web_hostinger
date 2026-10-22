@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { Hono } from "hono"
 
+// The admin router reaches the email service through the campaign controls (#201).
+vi.mock("server-only", () => ({}))
+
 // ── Mock session ────────────────────────────────────────────────────────────
 let mockSession: { id: string; email: string; role: string } | null = null
 vi.mock("@/src/lib/db/auth", () => ({

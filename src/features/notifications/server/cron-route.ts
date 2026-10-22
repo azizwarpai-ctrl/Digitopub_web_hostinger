@@ -14,6 +14,8 @@ import { sendEmail } from "@/src/lib/email/service"
 import { getAppBaseUrl, isNotificationsEnabled } from "./config"
 import { detectPublications } from "./detect-publications"
 import { runDigests } from "./digests"
+import { runSendBatch } from "./send-service"
+import { getNotificationTransport } from "@/src/lib/email/notification-transport"
 
 /** Tells admins that drafts are waiting. Best effort: a mail failure never fails the job. */
 export async function notifyAdminsOfDrafts(count: number): Promise<void> {
@@ -50,5 +52,11 @@ const app = new Hono()
         await notifyAdminsOfDrafts(results.filter((r) => r.drafted).length)
         return { partial: false, stats: { digests: results } }
     }))
+    // Shorter lock than the 5-minute schedule so a finished run never blocks the next tick.
+    .post("/send", cronEndpoint("notifications_send", async () => {
+        if (!isNotificationsEnabled()) return SKIPPED
+        const result = await runSendBatch(getNotificationTransport())
+        return { partial: result.remaining > 0, stats: { ...result } }
+    }, { lockWindowMs: 4 * 60 * 1000 }))
 
 export { app as notificationsCronRouter }

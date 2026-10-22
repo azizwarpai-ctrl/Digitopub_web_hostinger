@@ -35,7 +35,7 @@ export type PublicationEventKind = (typeof PUBLICATION_EVENT_KINDS)[number]
 export const CAMPAIGN_TYPES = ["issue", "digest_weekly", "digest_daily", "invitation", "custom"] as const
 export type CampaignType = (typeof CAMPAIGN_TYPES)[number]
 
-export const CAMPAIGN_STATUSES = ["draft", "scheduled", "queued", "sending", "sent", "cancelled", "failed"] as const
+export const CAMPAIGN_STATUSES = ["draft", "scheduled", "queued", "sending", "paused", "sent", "cancelled", "failed"] as const
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number]
 
 export const DELIVERY_STATUSES = ["queued", "sent", "failed", "skipped"] as const
