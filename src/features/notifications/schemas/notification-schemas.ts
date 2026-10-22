@@ -119,11 +119,41 @@ export const campaignListQuerySchema = z.object({
     type: z.string().max(20).optional(),
 })
 
+/** Edited HTML / text for one campaign; null restores the template's. */
+const contentOverride = z.string().max(500_000).nullable().optional()
+
 export const campaignEditSchema = z.object({
     from_name: z.string().trim().max(100).nullable().optional(),
     subject_override: z.string().trim().max(500).nullable().optional(),
     editor_note: z.string().trim().max(2000).nullable().optional(),
     excluded_event_ids: z.array(idString).max(1000).optional(),
+    message_heading: z.string().trim().max(200).nullable().optional(),
+    message: z.string().max(20_000).nullable().optional(),
+    html_override: contentOverride,
+    text_override: contentOverride,
+})
+
+/** Who receives a New message; always confirmed (active) subscribers only. */
+export const customAudienceSchema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("all") }),
+    z.object({ kind: z.literal("journal"), journal_id: idString }),
+    z.object({ kind: z.literal("people"), subscriber_ids: z.array(idString).min(1).max(500) }),
+    z.object({ kind: z.literal("import"), import_id: idString }),
+])
+
+export const campaignCreateSchema = z.object({
+    audience: customAudienceSchema,
+    subject: z.string().trim().min(1, "A subject is required").max(500),
+    message_heading: z.string().trim().max(200).nullable().optional(),
+    message: z.string().max(20_000).nullable().optional(),
+    from_name: z.string().trim().max(100).nullable().optional(),
+    template_id: idString.nullable().optional(),
+})
+
+/** Same naming rule as the email template editor. */
+export const saveAsTemplateSchema = z.object({
+    name: z.string().trim().min(1).max(100).regex(/^[a-z0-9_-]+$/, "Use lowercase letters, digits, hyphens and underscores"),
+    description: z.string().trim().max(2000).nullable().optional(),
 })
 
 export const campaignApproveSchema = z.object({
@@ -172,6 +202,7 @@ export const STYLE_PREVIEW_TEMPLATES = [
     "notify_import_invitation",
     "notify_welcome",
     "notify_preferences_updated",
+    "notify_custom_message",
 ] as const
 export const stylePreviewQuerySchema = z.object({ template: z.enum(STYLE_PREVIEW_TEMPLATES).default("notify_new_issue") })
 export const applyStyleSchema = z.object({ overwriteCustomised: z.boolean().optional() })

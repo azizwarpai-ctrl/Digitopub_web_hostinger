@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,7 +58,14 @@ function CampaignsContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Campaigns" subtitle="Review, approve and monitor notification emails" />
+      <PageHeader title="Campaigns" subtitle="Review, approve and monitor notification emails">
+        <Button asChild>
+          <Link href="/admin/notifications/campaigns/new">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            New message
+          </Link>
+        </Button>
+      </PageHeader>
 
       <Card>
         <CardHeader>

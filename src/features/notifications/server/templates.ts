@@ -19,6 +19,7 @@ export const NOTIFICATION_TEMPLATE_KEYS = {
     newIssue: "notify_new_issue",
     weeklyDigest: "notify_weekly_digest",
     dailyDigest: "notify_daily_digest",
+    customMessage: "notify_custom_message",
 } as const
 
 export type TemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[keyof typeof NOTIFICATION_TEMPLATE_KEYS]

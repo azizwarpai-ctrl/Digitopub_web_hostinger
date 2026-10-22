@@ -52,15 +52,29 @@ export interface CountItem {
   count: number
 }
 
+/** Who receives a New message; always confirmed subscribers only. */
+export type CustomAudience =
+  | { kind: "all" }
+  | { kind: "journal"; journal_id: string }
+  | { kind: "people"; subscriber_ids: string[] }
+  | { kind: "import"; import_id: string }
+
 export interface CampaignDetail {
   campaign: CampaignRow & {
+    html_override: string | null
+    text_override: string | null
+    audience: CustomAudience | null
+    message_heading: string | null
+    message: string | null
+    /** Other rules and drafts using this template; null when the campaign is not a draft. */
+    template_usage: { rules: number; drafts: number } | null
     editor_note: string | null
     window: { from: string; to: string } | null
     /** Sender name chosen by an admin, or null for the automatic one. */
     from_name: string | null
     /** The name the inbox shows when from_name is empty (journal title or DigitoPub). */
     automatic_from_name: string
-    template: { id: string; name: string; subject: string } | null
+    template: { id: string; name: string; subject: string; html_content: string; text_content: string | null } | null
     approver: { full_name: string | null; email: string } | null
   }
   events: CampaignEvent[]
@@ -100,6 +114,19 @@ export interface UpdateCampaignInput {
   subject_override?: string | null
   editor_note?: string | null
   excluded_event_ids?: string[]
+  message_heading?: string | null
+  message?: string | null
+  html_override?: string | null
+  text_override?: string | null
+}
+
+export interface CreateCampaignInput {
+  audience: CustomAudience
+  subject: string
+  message_heading?: string | null
+  message?: string | null
+  from_name?: string | null
+  template_id?: string | null
 }
 
 export function useNotificationOverview() {
@@ -188,6 +215,59 @@ export function useUpdateCampaign() {
       invalidate(v.id)
     },
     onError: (error: Error) => toast.error(error.message || "Failed to save campaign"),
+  })
+}
+
+export function useCreateCampaign() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (json: CreateCampaignInput) => {
+      const res = await client.notifications.campaigns.$post({ json })
+      return parseRpcResponse<{ data: { id: string } }>(res, "Failed to create the message")
+    },
+    onSuccess: () => {
+      toast.success("Draft created. Send a test, then approve it.")
+      queryClient.invalidateQueries({ queryKey: ["notification-campaigns"] })
+      queryClient.invalidateQueries({ queryKey: ["notification-overview"] })
+    },
+    onError: (error: Error) => toast.error(error.message || "Failed to create the message"),
+  })
+}
+
+/** Saves the draft's current content as a new template (the draft then uses it). */
+export function useSaveCampaignAsTemplate() {
+  const invalidate = useInvalidateCampaign()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, name, description }: { id: string; name: string; description?: string | null }) => {
+      const res = await client.notifications.campaigns[":id"]["save-as-template"].$post({ param: { id }, json: { name, description } })
+      return parseRpcResponse<{ data: { id: string; name: string }; message?: string }>(res, "Failed to save the template")
+    },
+    onSuccess: (body, v) => {
+      toast.success(body.message ?? "Template saved")
+      invalidate(v.id)
+      queryClient.invalidateQueries({ queryKey: ["email-templates"] })
+    },
+    onError: (error: Error) => toast.error(error.message || "Failed to save the template"),
+  })
+}
+
+/** Writes the draft's current content over its template. */
+export function useOverwriteCampaignTemplate() {
+  const invalidate = useInvalidateCampaign()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const res = await client.notifications.campaigns[":id"]["overwrite-template"].$post({ param: { id } })
+      return parseRpcResponse<{ data: { id: string; name: string }; message?: string }>(res, "Failed to update the template")
+    },
+    onSuccess: (body, v) => {
+      toast.success(body.message ?? "Template updated")
+      invalidate(v.id)
+      queryClient.invalidateQueries({ queryKey: ["email-templates"] })
+      queryClient.invalidateQueries({ queryKey: ["email-template"] })
+    },
+    onError: (error: Error) => toast.error(error.message || "Failed to update the template"),
   })
 }
 

@@ -7,11 +7,15 @@
 import type { ArticleSnapshot, IssueSnapshot } from "../types/notification-types"
 import { SITE_NAME, getAppBaseUrl } from "./config"
 import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
-import { buildArticles, buildEditorNote, buildToc } from "./render-blocks"
+import { buildArticles, buildEditorNote, buildMessage, buildToc } from "./render-blocks"
 
 const EDITOR_NOTE = "This issue gathers recent work on digital workflows in orthodontic diagnosis and treatment."
 
 const base = () => getAppBaseUrl()
+
+const SAMPLE_MESSAGE = () => `The editors invite submissions for a special issue on digital workflows in orthodontic diagnosis and treatment.
+
+Manuscripts are due by 31 January. Author guidelines: ${base()}/journals/1`
 
 const ARTICLES: ArticleSnapshot[] = [
     ["Long-term stability of clear aligner therapy: a 5-year cohort study", "Orthodontics", ["Maria Rossi", "Ahmed Saleh"], "10.5555/jor.2026.0142"],
@@ -86,6 +90,16 @@ export function sampleVariables(templateName: string, style: EmailStyle = EMAIL_
                 confirm_url: `${base()}/notifications/confirm?token=sample`, expires_on: "2026-11-20", inviter_org: SITE_NAME,
                 primary_discipline: "Orthodontics", selected_journals: ISSUE.journal_title, selected_disciplines: "Orthodontics, Endodontics",
             }
+        case "notify_custom_message": {
+            const message = buildMessage(SAMPLE_MESSAGE(), style)
+            return {
+                ...common,
+                sender_name: SITE_NAME,
+                message_heading: "Call for papers: digital orthodontics",
+                message_html: message.html,
+                message_text: message.text,
+            }
+        }
         default:
             return common
     }

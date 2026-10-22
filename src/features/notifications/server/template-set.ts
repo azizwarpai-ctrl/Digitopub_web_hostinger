@@ -329,6 +329,28 @@ If you did not make this change, you can restore your preferences from the link 
 
 ${textFooter("You are receiving this message because the alert preferences for this address were changed.")}`,
     },
+
+    notify_custom_message: {
+        subject: "A message from {{sender_name}}",
+        description: "General-purpose letter for messages written by an admin (New message). The text goes in message_html / message_text.",
+        variables: [...COMMON_VARIABLES, "sender_name", "message_heading", "message_html", "message_text"],
+        html_content: layout({
+            masthead: mastLink("site_url", "{{sender_name}}"),
+            reason: "You are receiving this message because you subscribed to publication alerts from {{site_name}}.",
+            body: [
+                h1("{{message_heading}}"),
+                p("Dear {{recipient_name}},"),
+                "{{{message_html}}}",
+            ].join("\n"),
+        }),
+        text_content: `{{message_heading}}
+
+Dear {{recipient_name}},
+
+{{message_text}}
+
+${textFooter("You are receiving this message because you subscribed to publication alerts from {{site_name}}.")}`,
+    },
 }
 }
 

@@ -9,6 +9,7 @@ import type { EmailTemplate, NotificationCampaign, PublicationEvent } from "@pri
 import { prisma } from "@/src/lib/db/config"
 import { extractAllVariables, renderHtmlTemplate, renderTemplate } from "@/src/lib/email/renderer"
 import type { NotificationMessage } from "@/src/lib/email/notification-transport"
+import { defaultSenderName } from "@/src/lib/email/sender-display-name"
 import { CONFIRM_TOKEN_TTL_SECONDS, hashNotifyToken, signNotifyToken } from "@/src/lib/notification-token"
 
 import type { ArticleSnapshot, CampaignPayload, IssueSnapshot } from "../types/notification-types"
@@ -16,7 +17,7 @@ import { SITE_NAME, getAppBaseUrl } from "./config"
 import { manageUrl } from "./public-service"
 import { getSettings } from "./admin-config-service"
 import { getEmailStyle, type EmailStyle } from "./email-styles"
-import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildToc } from "./render-blocks"
+import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildMessage, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
 import { campaignJournalTitle, senderNameFor } from "./sender-name"
 
@@ -102,6 +103,7 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
         recipient_name: s.name || "Colleague",
         site_name: SITE_NAME,
         site_url: getAppBaseUrl(),
+        sender_name: ctx.senderName ?? defaultSenderName(),
         manage_url: manageUrl(s),
         unsubscribe_url: pageUnsubscribe,
         privacy_url: `${getAppBaseUrl()}/privacy`,
@@ -191,23 +193,44 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
                 preheader: "Confirm to receive publication alerts. Nothing further is sent unless you do.",
             }
         }
+        case "custom": {
+            const message = buildMessage(payload.message, ctx.style)
+            return {
+                ...vars,
+                message_heading: payload.message_heading ?? "",
+                message_html: message.html,
+                message_text: message.text,
+                preheader: payload.message_heading || `A message from ${vars.sender_name}.`,
+            }
+        }
         default:
             return vars
+    }
+}
+
+/** The content a campaign is sent with: its own edits when present, otherwise its template's. */
+export function effectiveContent(
+    campaign: Pick<NotificationCampaign, "subject_override" | "html_override" | "text_override">,
+    template: Pick<EmailTemplate, "subject" | "html_content" | "text_content">,
+): { subject: string; html: string; text: string | null } {
+    return {
+        subject: campaign.subject_override || template.subject,
+        html: campaign.html_override ?? template.html_content,
+        text: campaign.text_override ?? template.text_content,
     }
 }
 
 export async function composeMessage(ctx: ComposeContext, s: ComposeSubscriber): Promise<NotificationMessage | null> {
     const vars = await variablesFor(ctx, s)
     if (!vars) return null
-    const t = ctx.template
-    const subjectTpl = ctx.campaign.subject_override || t.subject
+    const c = effectiveContent(ctx.campaign, ctx.template)
     // Declared-but-unknown variables render empty instead of leaking "{{name}}".
-    for (const key of extractAllVariables(t.html_content, subjectTpl, t.text_content ?? "")) vars[key] ??= ""
+    for (const key of extractAllVariables(c.html, c.subject, c.text ?? "")) vars[key] ??= ""
     return {
         to: s.email,
-        subject: renderTemplate(subjectTpl, vars).replace(/[\r\n]+/g, " ").trim(),
-        html: renderHtmlTemplate(t.html_content, vars, RAW_BLOCK_VARIABLES),
-        text: t.text_content ? renderTemplate(t.text_content, vars) : vars.toc_text || vars.articles_text || "",
+        subject: renderTemplate(c.subject, vars).replace(/[\r\n]+/g, " ").trim(),
+        html: renderHtmlTemplate(c.html, vars, RAW_BLOCK_VARIABLES),
+        text: c.text ? renderTemplate(c.text, vars) : vars.toc_text || vars.articles_text || vars.message_text || "",
         headers: bulkHeaders(s, ctx.campaign.id),
         fromName: ctx.senderName,
     }

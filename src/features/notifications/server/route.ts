@@ -48,6 +48,7 @@ import {
 import {
     applyStyleSchema,
     campaignApproveSchema,
+    campaignCreateSchema,
     campaignEditSchema,
     campaignListQuerySchema,
     campaignTestSchema,
@@ -57,11 +58,14 @@ import {
     disciplineUpdateSchema,
     emailStyleParamSchema,
     ruleUpsertSchema,
+    saveAsTemplateSchema,
     settingsSchema,
     stylePreviewQuerySchema,
 } from "../schemas/notification-schemas"
 import { getReadiness, installDefaults, sendDeliverabilityTest, takeDeliverabilityTestSlot } from "./go-live-service"
 import { applyStyle, listStyles, previewStyle } from "./style-gallery-service"
+import { ContentGuardError } from "./content-guard"
+import { CampaignInputError, createCustomCampaign, overwriteDraftTemplate, saveDraftAsTemplate } from "./custom-campaign-service"
 import { ImportParseError } from "./import/parse"
 import {
     applyTermMappings,
@@ -321,6 +325,15 @@ const app = new Hono()
         if (!preview) return fail(c, "Campaign not found", 404)
         return c.json({ success: true, data: preview })
     })
+    .post("/campaigns", zValidator("json", campaignCreateSchema), async (c) => {
+        try {
+            const created = await createCustomCampaign(c.req.valid("json"))
+            return c.json({ success: true, data: serializeRecord(created), message: "Draft created. Send a test, then approve it." }, 201)
+        } catch (e) {
+            if (e instanceof CampaignInputError) return fail(c, e.message, 400)
+            throw e
+        }
+    })
     .patch("/campaigns/:id", zValidator("param", idParamSchema), zValidator("json", campaignEditSchema), async (c) => {
         try {
             const r = await updateDraft(BigInt(c.req.valid("param").id), c.req.valid("json"))
@@ -328,6 +341,29 @@ const app = new Hono()
             return c.json({ success: true, data: serializeRecord(r) })
         } catch (e) {
             if (e instanceof CampaignStateError) return fail(c, e.message, 409)
+            if (e instanceof ContentGuardError) return fail(c, e.message, 400)
+            throw e
+        }
+    })
+    .post("/campaigns/:id/save-as-template", zValidator("param", idParamSchema), zValidator("json", saveAsTemplateSchema), async (c) => {
+        try {
+            const t = await saveDraftAsTemplate(BigInt(c.req.valid("param").id), c.req.valid("json"))
+            if (!t) return fail(c, "Campaign not found", 404)
+            return c.json({ success: true, data: serializeRecord(t), message: `Saved as template "${t.name}"` })
+        } catch (e) {
+            if (e instanceof CampaignInputError) return fail(c, e.message, 409)
+            if (e instanceof ContentGuardError) return fail(c, e.message, 400)
+            throw e
+        }
+    })
+    .post("/campaigns/:id/overwrite-template", zValidator("param", idParamSchema), async (c) => {
+        try {
+            const t = await overwriteDraftTemplate(BigInt(c.req.valid("param").id))
+            if (!t) return fail(c, "Campaign not found", 404)
+            return c.json({ success: true, data: serializeRecord(t), message: `Template "${t.name}" updated` })
+        } catch (e) {
+            if (e instanceof CampaignInputError) return fail(c, e.message, 409)
+            if (e instanceof ContentGuardError) return fail(c, e.message, 400)
             throw e
         }
     })
