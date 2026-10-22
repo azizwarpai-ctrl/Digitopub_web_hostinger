@@ -79,7 +79,7 @@ value for two variables.
 | `NOTIFY_SMTP_USER` | `noreply@digitopub.com` | The mailbox from Step 2 |
 | `NOTIFY_SMTP_PASSWORD` | the mailbox password | Set in Step 2 |
 | `NOTIFY_SMTP_FROM_EMAIL` | `noreply@digitopub.com` | Must be the same mailbox, or SPF and DMARC alignment fails |
-| `NOTIFY_FROM_NAME` | `DigitoPub Alerts` | Display name in the inbox |
+| `NOTIFY_FROM_NAME` | `DigitoPub` | Default display name in the inbox. Journal messages show the journal title automatically; the address stays the same. |
 | `NOTIFY_UNSUBSCRIBE_MAILTO` | `unsubscribe@digitopub.com` | Optional. Leave it unset if you skipped that mailbox. |
 | `NOTIFY_MAX_PER_HOUR` | about 80% of the plan's hourly limit, minus your usual OTP/admin volume | From Step 2. The default is `60`. |
 | `NOTIFY_MAX_PER_DAY` | about 80% of the plan's daily limit | From Step 2. The default is `300`. During warm-up, use the week's target (see `email-deliverability.md`). |

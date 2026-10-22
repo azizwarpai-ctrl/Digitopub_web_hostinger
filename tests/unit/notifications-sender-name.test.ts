@@ -1,0 +1,77 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+
+vi.mock("server-only", () => ({}))
+
+const journals = new Map<bigint, string>([[BigInt(3), "Journal of Orthodontic Research"]])
+const prismaMock: any = {
+    journal: { findUnique: vi.fn(async ({ where }: any) => (journals.has(where.id) ? { title: journals.get(where.id) } : null)) },
+}
+vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
+
+const sendMail = vi.fn(async () => ({}))
+vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail, close: vi.fn() }) } }))
+
+const { automaticSenderName, senderNameFor } = await import("@/src/features/notifications/server/sender-name")
+const { cleanSenderName, defaultSenderName } = await import("@/src/lib/email/sender-display-name")
+const { SmtpNotificationTransport, notificationFromAddress } = await import("@/src/lib/email/notification-transport")
+
+const ENV = ["NOTIFY_FROM_NAME", "NOTIFY_SMTP_HOST", "NOTIFY_SMTP_USER", "NOTIFY_SMTP_PASSWORD", "NOTIFY_SMTP_FROM_EMAIL"] as const
+const saved: Record<string, string | undefined> = {}
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    for (const k of ENV) saved[k] = process.env[k]
+    delete process.env.NOTIFY_FROM_NAME
+    process.env.NOTIFY_SMTP_HOST = "smtp.example.org"
+    process.env.NOTIFY_SMTP_USER = "noreply@digitopub.com"
+    process.env.NOTIFY_SMTP_PASSWORD = "x"
+    process.env.NOTIFY_SMTP_FROM_EMAIL = "noreply@digitopub.com"
+})
+afterEach(() => {
+    for (const k of ENV) (saved[k] === undefined ? delete process.env[k] : (process.env[k] = saved[k]))
+})
+
+const issueEvent = (journal_title: string) => ({ kind: "issue", snapshot: { journal_title } }) as any
+
+describe("sender display name", () => {
+    it("defaults to DigitoPub, or NOTIFY_FROM_NAME when set", () => {
+        expect(defaultSenderName()).toBe("DigitoPub")
+        expect(notificationFromAddress()).toBe('"DigitoPub" <noreply@digitopub.com>')
+        process.env.NOTIFY_FROM_NAME = "DigitoPub Publishing"
+        expect(notificationFromAddress()).toBe('"DigitoPub Publishing" <noreply@digitopub.com>')
+    })
+
+    it("only changes the name, never the address, and strips header injection", () => {
+        expect(notificationFromAddress('Evil"\r\nBcc: x@y.z')).toBe('"Evil Bcc: x@y.z" <noreply@digitopub.com>')
+        expect(cleanSenderName("a".repeat(150))).toHaveLength(100)
+        expect(cleanSenderName("   ")).toBe("")
+        expect(notificationFromAddress("   ")).toBe('"DigitoPub" <noreply@digitopub.com>')
+    })
+
+    it("uses the journal title for issue alerts and journal-linked campaigns", async () => {
+        expect(await automaticSenderName({ type: "issue", payload: {} }, [issueEvent("Dental Materials Review")])).toBe("Dental Materials Review")
+        expect(await automaticSenderName({ type: "invitation", payload: { journal_id: "3" } })).toBe("Journal of Orthodontic Research")
+        expect(await automaticSenderName({ type: "custom", payload: { journal_id: "3" } })).toBe("Journal of Orthodontic Research")
+    })
+
+    it("uses the default for digests, general lists and unknown journals", async () => {
+        expect(await automaticSenderName({ type: "digest_weekly", payload: { event_ids: ["1"] } })).toBeNull()
+        expect(await automaticSenderName({ type: "invitation", payload: { import_id: "9" } })).toBeNull()
+        expect(await automaticSenderName({ type: "custom", payload: { journal_id: "99" } })).toBeNull()
+    })
+
+    it("lets an admin's choice win", async () => {
+        expect(await senderNameFor({ type: "issue", payload: { from_name: "The Editors" } }, [issueEvent("X")])).toBe("The Editors")
+        expect(await senderNameFor({ type: "issue", payload: { from_name: "  " } }, [issueEvent("X")])).toBe("X")
+    })
+
+    it("sends each message under its own name from the same mailbox", async () => {
+        const t = new SmtpNotificationTransport()
+        await t.send({ to: "a@example.org", subject: "s", html: "h", text: "t", headers: {}, fromName: "Journal of Orthodontic Research" })
+        await t.send({ to: "b@example.org", subject: "s", html: "h", text: "t", headers: {} })
+        expect(sendMail.mock.calls.map((c: any[]) => c[0].from)).toEqual([
+            '"Journal of Orthodontic Research" <noreply@digitopub.com>',
+            '"DigitoPub" <noreply@digitopub.com>',
+        ])
+    })
+})

@@ -50,4 +50,6 @@ export interface CampaignPayload {
     editor_note?: string | null
     /** Event ids an admin removed from the draft before approving (Phase 6). */
     excluded_event_ids?: string[]
+    /** Sender display name chosen by an admin; null or absent means the automatic name. */
+    from_name?: string | null
 }

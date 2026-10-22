@@ -65,7 +65,7 @@ Only required if integrating with an Open Journal Systems instance. The pool is 
 | `NOTIFY_SMTP_USER` | SMTP user for the alerts sender mailbox | Falls back to `SMTP_USER` | `src/lib/email/notification-transport.ts` |
 | `NOTIFY_SMTP_PASSWORD` | SMTP password for the alerts sender mailbox | Falls back to `SMTP_PASSWORD` | `src/lib/email/notification-transport.ts` |
 | `NOTIFY_SMTP_FROM_EMAIL` | From address for publication-alert mail (e.g. `alerts@digitopub.com`) | Falls back to `SMTP_FROM_EMAIL` | `src/lib/email/notification-transport.ts` |
-| `NOTIFY_FROM_NAME` | Display name in the From header of alert mail | `DigitoPub Alerts` | `src/lib/email/notification-transport.ts` |
+| `NOTIFY_FROM_NAME` | Default display name in the From header of alert mail (journal messages use the journal title) | `DigitoPub` | `src/lib/email/notification-transport.ts` |
 | `NOTIFY_MAX_PER_RUN` | Maximum alert emails sent per send-cron run | `20` | `src/features/notifications/server/config.ts` |
 | `NOTIFY_MAX_PER_HOUR` | Maximum alert emails sent per hour. Set to about 80% of the hosting plan's SMTP limit | `60` | `src/features/notifications/server/config.ts` |
 | `NOTIFY_MAX_PER_DAY` | Maximum alert emails sent per day. Set to about 80% of the hosting plan's SMTP limit | `300` | `src/features/notifications/server/config.ts` |

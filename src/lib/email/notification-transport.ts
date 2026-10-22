@@ -11,12 +11,16 @@ import "server-only"
 import nodemailer from "nodemailer"
 import type { Transporter } from "nodemailer"
 
+import { cleanSenderName, defaultSenderName } from "./sender-display-name"
+
 export interface NotificationMessage {
     to: string
     subject: string
     html: string
     text: string
     headers: Record<string, string>
+    /** Display name for this message (e.g. a journal title). The address never changes. */
+    fromName?: string | null
 }
 
 export type SendOutcome = { ok: true } | { ok: false; permanent: boolean; error: string }
@@ -32,10 +36,15 @@ export function isNotificationSmtpConfigured(): boolean {
     return !!(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD"))
 }
 
-export function notificationFromAddress(): string {
+/**
+ * The From header. Only the display name varies (per campaign, e.g. a journal
+ * title); the address is always the alerts mailbox, so SPF, DKIM and DMARC
+ * alignment never change.
+ */
+export function notificationFromAddress(name?: string | null): string {
     const address = env("SMTP_FROM_EMAIL") || env("SMTP_USER")
-    const name = (process.env.NOTIFY_FROM_NAME || "DigitoPub Alerts").replace(/["\\\r\n]/g, "")
-    return `"${name}" <${address}>`
+    const display = cleanSenderName(name) || defaultSenderName()
+    return `"${display}" <${address}>`
 }
 
 /**
@@ -74,7 +83,7 @@ export class SmtpNotificationTransport implements NotificationTransport {
         if (!isNotificationSmtpConfigured()) return { ok: false, permanent: false, error: "Notification SMTP not configured" }
         try {
             await this.get().sendMail({
-                from: notificationFromAddress(),
+                from: notificationFromAddress(message.fromName),
                 to: message.to,
                 subject: message.subject,
                 html: message.html,

@@ -121,6 +121,7 @@ function CountList({ title, items }: { title: string; items: CountItem[] }) {
 function DraftEditor({ detail }: { detail: CampaignDetail }) {
   const { campaign, events, recipients } = detail
   const update = useUpdateCampaign()
+  const [fromName, setFromName] = useState(campaign.from_name ?? "")
   const [subject, setSubject] = useState(campaign.subject_override ?? "")
   const [note, setNote] = useState(campaign.editor_note ?? "")
   const [excluded, setExcluded] = useState<string[]>(events.filter((e) => e.excluded).map((e) => e.id))
@@ -132,6 +133,7 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
     update.mutate({
       id: campaign.id,
       json: {
+        from_name: fromName.trim() || null,
         subject_override: subject.trim() || null,
         editor_note: note.trim() || null,
         excluded_event_ids: excluded,
@@ -147,6 +149,21 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="from-name">Sender name</Label>
+          <Input
+            id="from-name"
+            value={fromName}
+            maxLength={100}
+            placeholder={campaign.automatic_from_name}
+            onChange={(e) => setFromName(e.target.value)}
+            aria-describedby="from-name-help"
+          />
+          <p id="from-name-help" className="text-xs text-muted-foreground">
+            The name shown in the inbox. Leave empty to use &ldquo;{campaign.automatic_from_name}&rdquo;. The sending
+            address does not change.
+          </p>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="subject-override">Subject override</Label>
           <Input
