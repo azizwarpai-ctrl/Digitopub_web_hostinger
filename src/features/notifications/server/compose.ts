@@ -18,6 +18,7 @@ import { getSettings } from "./admin-config-service"
 import { getEmailStyle, type EmailStyle } from "./email-styles"
 import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
+import { senderNameFor } from "./sender-name"
 
 export interface ComposeContext {
     campaign: NotificationCampaign
@@ -30,6 +31,8 @@ export interface ComposeContext {
     publisherAddress: string
     /** Active email style; the server-built blocks are drawn in it. */
     style: EmailStyle
+    /** From display name for this campaign; null means the default sender name. */
+    senderName: string | null
 }
 
 export interface ComposeSubscriber extends AudienceSubscriber {
@@ -52,6 +55,7 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
     return {
         campaign,
         template,
+        senderName: await senderNameFor(campaign, events),
         events: new Map(events.map((e) => [e.id.toString(), e])),
         rules,
         disciplineNames: new Map(disciplines.map((d) => [d.id.toString(), d.name])),
@@ -200,5 +204,6 @@ export async function composeMessage(ctx: ComposeContext, s: ComposeSubscriber):
         html: renderHtmlTemplate(t.html_content, vars, RAW_BLOCK_VARIABLES),
         text: t.text_content ? renderTemplate(t.text_content, vars) : vars.toc_text || vars.articles_text || "",
         headers: bulkHeaders(s, ctx.campaign.id),
+        fromName: ctx.senderName,
     }
 }

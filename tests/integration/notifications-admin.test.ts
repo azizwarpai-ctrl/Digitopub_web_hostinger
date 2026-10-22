@@ -124,6 +124,13 @@ describe("approveCampaign", () => {
         expect(await approveCampaign(1n, 7n)).toEqual({ status: "sent", recipients: 0 })
     })
 
+    it("stores a cleaned sender name on the draft, and clears it when emptied", async () => {
+        await updateDraft(1n, { from_name: '  The "Editors"\n' })
+        expect(db.campaigns[0].payload).toMatchObject({ event_ids: ["50"], from_name: "The Editors" })
+        await updateDraft(1n, { from_name: "" })
+        expect(db.campaigns[0].payload.from_name).toBeNull()
+    })
+
     it("approves invitations for the import's pending subscribers only", async () => {
         db.campaigns = [{ id: 2n, type: "invitation", status: "draft", payload: { import_id: "9" } }]
         db.subscribers = [

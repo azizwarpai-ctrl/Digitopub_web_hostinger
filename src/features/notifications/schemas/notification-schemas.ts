@@ -113,6 +113,7 @@ export const campaignListQuerySchema = z.object({
 })
 
 export const campaignEditSchema = z.object({
+    from_name: z.string().trim().max(100).nullable().optional(),
     subject_override: z.string().trim().max(500).nullable().optional(),
     editor_note: z.string().trim().max(2000).nullable().optional(),
     excluded_event_ids: z.array(idString).max(1000).optional(),

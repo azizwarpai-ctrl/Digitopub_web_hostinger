@@ -9,11 +9,13 @@ import { Prisma, type NotificationCampaign } from "@prisma/client"
 
 import { prisma } from "@/src/lib/db/config"
 import { getNotificationTransport } from "@/src/lib/email/notification-transport"
+import { cleanSenderName, defaultSenderName } from "@/src/lib/email/sender-display-name"
 
 import type { CampaignPayload, IssueSnapshot, ArticleSnapshot } from "../types/notification-types"
 import { loadActiveAudience, loadRules } from "./audience"
 import { composeMessage, loadComposeContext, type ComposeSubscriber } from "./compose"
 import { resolveDigest, resolveRecipients, type AudienceSubscriber } from "./resolve-recipients"
+import { automaticSenderName } from "./sender-name"
 
 const DELIVERY_CHUNK = 1000
 
@@ -113,7 +115,15 @@ export async function getCampaignDetail(id: bigint) {
     const excluded = new Set(payload.excluded_event_ids ?? [])
     const { payload: _p, ...campaign } = c
     return {
-        campaign: { ...campaign, subject: c.subject_override || c.template.subject, editor_note: payload.editor_note ?? null, window: payload.window ?? null },
+        campaign: {
+            ...campaign,
+            subject: c.subject_override || c.template.subject,
+            editor_note: payload.editor_note ?? null,
+            window: payload.window ?? null,
+            from_name: payload.from_name ?? null,
+            /** What the inbox shows when from_name is empty. */
+            automatic_from_name: (await automaticSenderName(c, events)) || defaultSenderName(),
+        },
         events: events.map((e) => {
             const snap = e.snapshot as unknown as Partial<IssueSnapshot & ArticleSnapshot>
             return {
@@ -183,6 +193,7 @@ export interface CampaignEdit {
     subject_override?: string | null
     editor_note?: string | null
     excluded_event_ids?: string[]
+    from_name?: string | null
 }
 
 export async function updateDraft(id: bigint, edit: CampaignEdit) {
@@ -192,6 +203,7 @@ export async function updateDraft(id: bigint, edit: CampaignEdit) {
     const payload = payloadOf(c)
     const next: CampaignPayload = { ...payload }
     if (edit.editor_note !== undefined) next.editor_note = edit.editor_note || null
+    if (edit.from_name !== undefined) next.from_name = cleanSenderName(edit.from_name) || null
     if (edit.excluded_event_ids !== undefined) {
         const known = new Set(payload.event_ids ?? [])
         next.excluded_event_ids = edit.excluded_event_ids.filter((e) => known.has(e))

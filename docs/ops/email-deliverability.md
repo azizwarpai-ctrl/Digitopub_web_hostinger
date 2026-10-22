@@ -15,7 +15,7 @@ alerts mailbox through the `NOTIFY_SMTP_*` variables:
 
 - `NOTIFY_SMTP_HOST`, `NOTIFY_SMTP_PORT`, `NOTIFY_SMTP_SECURE`: optional, fall back to `SMTP_*`.
 - `NOTIFY_SMTP_USER`, `NOTIFY_SMTP_PASSWORD`, `NOTIFY_SMTP_FROM_EMAIL`: the alerts mailbox credentials.
-- `NOTIFY_FROM_NAME`: display name, default `DigitoPub Alerts`.
+- `NOTIFY_FROM_NAME`: default display name, `DigitoPub` when unset. Messages about one journal (its issue alerts, invitations for a list assigned to it, messages to its members) show the journal title instead, and an admin can change the name per draft. The address never changes, so SPF, DKIM and DMARC alignment is the same for every name.
 
 Keep OTP and admin mail on the `SMTP_*` mailbox. Bulk alert traffic must not share reputation
 with transactional mail.

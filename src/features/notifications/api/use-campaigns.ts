@@ -56,6 +56,10 @@ export interface CampaignDetail {
   campaign: CampaignRow & {
     editor_note: string | null
     window: { from: string; to: string } | null
+    /** Sender name chosen by an admin, or null for the automatic one. */
+    from_name: string | null
+    /** The name the inbox shows when from_name is empty (journal title or DigitoPub). */
+    automatic_from_name: string
     template: { id: string; name: string; subject: string } | null
     approver: { full_name: string | null; email: string } | null
   }
@@ -92,6 +96,7 @@ export interface CampaignFilters {
 }
 
 export interface UpdateCampaignInput {
+  from_name?: string | null
   subject_override?: string | null
   editor_note?: string | null
   excluded_event_ids?: string[]
