@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { Suspense, useRef, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Check, CheckCircle2, Upload } from "lucide-react"
 import { toast } from "sonner"
 
@@ -108,11 +109,22 @@ function Stepper({ current }: { current: number }) {
 }
 
 export default function NewImportPage() {
-  const [step, setStep] = useState(0)
+  return (
+    <Suspense>
+      <NewImportWizard />
+    </Suspense>
+  )
+}
+
+function NewImportWizard() {
+  // Opened from "Import authors from OJS" (?import=<id>): the list is already staged, start at review.
+  const stagedId = useSearchParams().get("import")
+  const initialImportId = stagedId && /^\d+$/.test(stagedId) ? stagedId : null
+  const [step, setStep] = useState(initialImportId ? 2 : 0)
   const [file, setFile] = useState<File | null>(null)
   const [inspect, setInspect] = useState<InspectResult | null>(null)
   const [map, setMap] = useState<Record<string, string>>({})
-  const [importId, setImportId] = useState<string | null>(null)
+  const [importId, setImportId] = useState<string | null>(initialImportId)
   const [dragActive, setDragActive] = useState(false)
   const [rowFilter, setRowFilter] = useState<ImportRowFilter | "all">("all")
   const [rowPage, setRowPage] = useState(1)
@@ -122,7 +134,7 @@ export default function NewImportPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
   /** "general", a journal id, or "" until the admin chooses. */
-  const [assignTo, setAssignTo] = useState("")
+  const [assignChoice, setAssignTo] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const inspectMutation = useInspectImport()
@@ -134,8 +146,11 @@ export default function NewImportPage() {
   const { data: disciplines } = useGetDisciplines()
   const { data: journals } = useGetJournals()
   const activeJournals = (journals ?? []).filter((j) => (j.status ?? "active") === "active")
-  const assignedJournal = activeJournals.find((j) => String(j.id) === assignTo)
   const { data: imp } = useGetImport(importId)
+  /** An OJS-author list belongs to its journal; the assignment is fixed. */
+  const fromOjs = imp?.file_type === "ojs"
+  const assignTo = assignChoice || (imp?.journal_id ? String(imp.journal_id) : "")
+  const assignedJournal = activeJournals.find((j) => String(j.id) === assignTo)
   const { data: rows, isLoading: rowsLoading } = useGetImportRows(
     importId,
     rowFilter === "all" ? undefined : rowFilter,
@@ -554,14 +569,14 @@ export default function NewImportPage() {
         <Card>
           <CardHeader>
             <CardTitle>Confirm import</CardTitle>
-            <CardDescription>{file?.name}</CardDescription>
+            <CardDescription>{file?.name ?? imp?.file_name}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="assign-to">
                 Assign this list to <span className="text-destructive">(required)</span>
               </Label>
-              <Select value={assignTo} onValueChange={setAssignTo}>
+              <Select value={assignTo} onValueChange={setAssignTo} disabled={fromOjs}>
                 <SelectTrigger id="assign-to" className="w-full sm:w-96" aria-describedby="assign-to-help">
                   <SelectValue placeholder="Choose a journal or General" />
                 </SelectTrigger>

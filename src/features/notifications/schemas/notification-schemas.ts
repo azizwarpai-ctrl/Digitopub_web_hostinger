@@ -17,6 +17,9 @@ export const idParamSchema = z.object({ id: idString })
 /** Confirm an import: assign it to a journal (id), to "General" (null), or keep its assignment (absent). */
 export const importConfirmSchema = z.object({ journal_id: idString.nullable().optional() })
 
+/** Stage a journal's OJS authors as an import assigned to that journal. */
+export const importFromOjsSchema = z.object({ journal_id: idString })
+
 export const columnMapSchema = z.object({
     email: z.number().int().min(0),
     name: z.number().int().min(0).optional(),

@@ -26,6 +26,8 @@ export interface UnmappedTerm {
 export interface SubscriberImport {
   id: string
   file_name: string
+  /** "xlsx" | "xls" | "csv" | "txt", or "ojs" for a list built from a journal's OJS authors. */
+  file_type?: string
   status: "parsed" | "confirmed" | "cancelled" | "failed"
   totals: ImportTotals | null
   created_at: string

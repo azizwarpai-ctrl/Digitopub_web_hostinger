@@ -114,6 +114,10 @@ const prismaMock = {
 }
 vi.mock("@/src/lib/db/config", () => ({ prisma: prismaMock }))
 
+// Read-only OJS author lookup (#217): the only OJS access the author import makes.
+const ojsAuthors = vi.fn()
+vi.mock("@/src/features/ojs/server/ojs-journal-authors", () => ({ getOjsAuthorsForJournal: (...a: unknown[]) => ojsAuthors(...a) }))
+
 const { notificationsRouter } = await import("@/src/features/notifications/server")
 
 const app = () => new Hono().route("/notifications", notificationsRouter)
@@ -152,7 +156,12 @@ beforeEach(() => {
     db.importRows = []
     db.links = []
     db.follows = []
-    db.journals = [{ id: 10n, title: "Journal of Orthodontic Research", status: "active" }, { id: 11n, title: "Old Journal", status: "inactive" }]
+    db.journals = [
+        { id: 10n, title: "Journal of Orthodontic Research", status: "active", ojs_id: "4" },
+        { id: 11n, title: "Old Journal", status: "inactive", ojs_id: "5" },
+        { id: 12n, title: "Local Journal", status: "active", ojs_id: null },
+    ]
+    ojsAuthors.mockReset()
     db.templates = []
     db.campaigns = []
 })
@@ -243,6 +252,50 @@ describe("import flow: upload → rows → mapping → confirm", () => {
         expect(db.follows.some((f) => f.subscriber_id === 1n)).toBe(false)
         expect(byId(db.imports, BigInt(created.id))!.journal_id).toBe(10n)
         expect(body.data.campaign.payload).toEqual({ import_id: String(created.id), journal_id: "10" })
+    })
+
+    it("stages a journal's OJS authors for review, assigned to that journal", async () => {
+        ojsAuthors.mockResolvedValue([
+            { email: "Lina@Example.org", name: "Lina Haddad" },
+            { email: "old@example.org", name: "Old Friend" },
+            { email: "gone@example.org", name: null },
+            { email: "broken", name: "No Email" },
+        ])
+        const fromOjs = (journal_id: string) => app().request("/notifications/imports/from-ojs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ journal_id }),
+        })
+        const res = await fromOjs("10")
+        expect(res.status).toBe(201)
+        const created = (await res.json()).data
+        expect(ojsAuthors).toHaveBeenCalledWith(4, expect.any(Number))
+        expect(created).toMatchObject({ file_type: "ojs", file_name: "OJS authors: Journal of Orthodontic Research", journal_id: "10", status: "parsed" })
+        expect(created.totals).toMatchObject({ rows: 4, valid: 1, invalid: 1, existing: 1, suppressed: 1 })
+        expect(db.subscribers.filter((s) => s.source === "import")).toHaveLength(0)
+
+        // Confirming without a body keeps the journal: the new author follows it.
+        const conf = await app().request(`/notifications/imports/${created.id}/confirm`, { method: "POST" })
+        expect(conf.status).toBe(200)
+        const lina = db.subscribers.find((s) => s.email === "lina@example.org")!
+        expect(lina).toMatchObject({ status: "pending", source: "import" })
+        expect(db.follows).toEqual([{ subscriber_id: lina.id, journal_id: 10n }])
+        expect((await conf.json()).data.campaign.payload).toMatchObject({ journal_id: "10" })
+    })
+
+    it("refuses OJS author imports for unlinked or inactive journals, and reports OJS outages", async () => {
+        const fromOjs = (journal_id: string) => app().request("/notifications/imports/from-ojs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ journal_id }),
+        })
+        expect((await fromOjs("12")).status).toBe(409)
+        expect((await fromOjs("11")).status).toBe(409)
+        ojsAuthors.mockResolvedValue([])
+        expect((await fromOjs("10")).status).toBe(409)
+        ojsAuthors.mockRejectedValue(new Error("ECONNREFUSED"))
+        expect((await fromOjs("10")).status).toBe(502)
+        expect(db.imports).toHaveLength(0)
     })
 
     it("confirms a General list explicitly", async () => {
