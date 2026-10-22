@@ -37,6 +37,13 @@ export interface IssueSnapshot {
     articles: Array<Pick<ArticleSnapshot, "title" | "authors" | "doi" | "section" | "is_open_access" | "url">>
 }
 
+/** Who receives a custom message (New message). Always limited to confirmed (active) subscribers. */
+export type CustomAudience =
+    | { kind: "all" }
+    | { kind: "journal"; journal_id: string }
+    | { kind: "people"; subscriber_ids: string[] }
+    | { kind: "import"; import_id: string }
+
 /** `NotificationCampaign.payload`. */
 export interface CampaignPayload {
     /** Publication events covered (issue and digest campaigns). */
@@ -52,4 +59,8 @@ export interface CampaignPayload {
     excluded_event_ids?: string[]
     /** Sender display name chosen by an admin; null or absent means the automatic name. */
     from_name?: string | null
+    /** Custom messages: the audience, and the admin's heading and plain-text message. */
+    audience?: CustomAudience
+    message_heading?: string | null
+    message?: string | null
 }

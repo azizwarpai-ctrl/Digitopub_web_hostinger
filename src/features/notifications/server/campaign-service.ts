@@ -16,6 +16,8 @@ import { loadActiveAudience, loadRules } from "./audience"
 import { composeMessage, loadComposeContext, type ComposeSubscriber } from "./compose"
 import { resolveDigest, resolveRecipients, type AudienceSubscriber } from "./resolve-recipients"
 import { automaticSenderName } from "./sender-name"
+import { assertContentOk } from "./content-guard"
+import { customAudienceIds, templateUsage } from "./custom-campaign-service"
 
 const DELIVERY_CHUNK = 1000
 
@@ -50,6 +52,13 @@ function payloadOf(c: NotificationCampaign): CampaignPayload {
 /** Audience as subscriber ids for any campaign type (approval and breakdown share it). */
 async function resolveCampaignAudience(c: NotificationCampaign): Promise<{ ids: bigint[]; audience: AudienceSubscriber[] }> {
     const payload = payloadOf(c)
+    if (c.type === "custom") {
+        const ids = await customAudienceIds(payload.audience)
+        const chosen = new Set(ids.map(String))
+        // The full active audience only feeds the journal/discipline breakdown.
+        const audience = (await loadActiveAudience()).filter((s) => chosen.has(String(s.id)))
+        return { ids, audience }
+    }
     if (c.type === "invitation") {
         if (!payload.import_id) return { ids: [], audience: [] }
         const rows = await prisma.notificationSubscriber.findMany({
@@ -85,12 +94,13 @@ export async function getCampaignDetail(id: bigint) {
     const c = await prisma.notificationCampaign.findUnique({
         where: { id },
         include: {
-            template: { select: { id: true, name: true, subject: true } },
+            template: { select: { id: true, name: true, subject: true, html_content: true, text_content: true } },
             approver: { select: { full_name: true, email: true } },
         },
     })
     if (!c) return null
     const payload = payloadOf(c)
+    const usage = c.status === "draft" ? await templateUsage(c.template_id, c.id) : null
     const eventIds = (payload.event_ids ?? []).map(BigInt)
     const events = eventIds.length
         ? await prisma.publicationEvent.findMany({ where: { id: { in: eventIds } }, orderBy: { published_at: "asc" } })
@@ -123,6 +133,11 @@ export async function getCampaignDetail(id: bigint) {
             from_name: payload.from_name ?? null,
             /** What the inbox shows when from_name is empty. */
             automatic_from_name: (await automaticSenderName(c, events)) || defaultSenderName(),
+            audience: payload.audience ?? null,
+            message_heading: payload.message_heading ?? null,
+            message: payload.message ?? null,
+            /** Other rules and drafts using this template (shown before overwriting it). */
+            template_usage: usage,
         },
         events: events.map((e) => {
             const snap = e.snapshot as unknown as Partial<IssueSnapshot & ArticleSnapshot>
@@ -194,6 +209,12 @@ export interface CampaignEdit {
     editor_note?: string | null
     excluded_event_ids?: string[]
     from_name?: string | null
+    /** Custom messages only. */
+    message_heading?: string | null
+    message?: string | null
+    /** Edited content for this campaign; null restores the template's. */
+    html_override?: string | null
+    text_override?: string | null
 }
 
 export async function updateDraft(id: bigint, edit: CampaignEdit) {
@@ -204,6 +225,19 @@ export async function updateDraft(id: bigint, edit: CampaignEdit) {
     const next: CampaignPayload = { ...payload }
     if (edit.editor_note !== undefined) next.editor_note = edit.editor_note || null
     if (edit.from_name !== undefined) next.from_name = cleanSenderName(edit.from_name) || null
+    if (c.type === "custom") {
+        if (edit.message_heading !== undefined) next.message_heading = edit.message_heading?.trim() || null
+        if (edit.message !== undefined) next.message = edit.message?.trim() || null
+    }
+    const overrides: { html_override?: string | null; text_override?: string | null } = {}
+    if (edit.html_override !== undefined) overrides.html_override = edit.html_override?.trim() ? edit.html_override : null
+    if (edit.text_override !== undefined) overrides.text_override = edit.text_override?.trim() ? edit.text_override : null
+    if (overrides.html_override || overrides.text_override) {
+        const template = await prisma.emailTemplate.findUniqueOrThrow({ where: { id: c.template_id }, select: { html_content: true, text_content: true } })
+        const html = overrides.html_override !== undefined ? overrides.html_override : c.html_override
+        const text = overrides.text_override !== undefined ? overrides.text_override : c.text_override
+        assertContentOk(html ?? template.html_content, text ?? template.text_content)
+    }
     if (edit.excluded_event_ids !== undefined) {
         const known = new Set(payload.event_ids ?? [])
         next.excluded_event_ids = edit.excluded_event_ids.filter((e) => known.has(e))
@@ -212,6 +246,7 @@ export async function updateDraft(id: bigint, edit: CampaignEdit) {
         where: { id },
         data: {
             ...(edit.subject_override !== undefined ? { subject_override: edit.subject_override || null } : {}),
+            ...overrides,
             payload: next as unknown as Prisma.InputJsonValue,
         },
     })

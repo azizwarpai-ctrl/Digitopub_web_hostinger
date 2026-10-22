@@ -38,6 +38,7 @@ const TEMPLATE_LABELS: Record<StylePreviewTemplate, string> = {
   notify_import_invitation: "Import invitation",
   notify_welcome: "Welcome",
   notify_preferences_updated: "Preferences updated",
+  notify_custom_message: "Custom message",
 }
 
 function StylePreview({ style, template }: { style: EmailStyleSummary; template: StylePreviewTemplate }) {

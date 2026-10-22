@@ -866,6 +866,9 @@ model NotificationCampaign {
   status             String                 @default("draft") @db.VarChar(20)
   template_id        BigInt
   subject_override   String?                @db.VarChar(500)
+  /// Edited content for this campaign only; null = the template's.
+  html_override      String?                @db.LongText
+  text_override      String?                @db.LongText
   payload            Json
   recipient_estimate Int                    @default(0)
   scheduled_at       DateTime?

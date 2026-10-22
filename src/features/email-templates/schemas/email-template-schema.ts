@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 /** {{{name}}} (raw HTML) is only allowed for server-built notification blocks. */
-const RAW_ALLOWED = ["toc_html", "articles_html", "editor_note_html"]
+const RAW_ALLOWED = ["toc_html", "articles_html", "editor_note_html", "message_html"]
 const rawVariablesOk = (html: string | undefined | null) =>
   !html || [...html.matchAll(/\{\{\{(\w+)\}\}\}/g)].every((m) => RAW_ALLOWED.includes(m[1]))
 const RAW_MESSAGE = `Triple braces {{{…}}} are only allowed for: ${RAW_ALLOWED.join(", ")}. Use {{name}} for everything else.`

@@ -29,7 +29,7 @@ const cases = EMAIL_STYLE_KEYS.flatMap((key) =>
 
 describe("email style gallery: styles", () => {
     it("keeps the Classic set byte-identical to the pre-gallery templates", () => {
-        for (const [name, t] of Object.entries(TEMPLATE_SET)) expect(sha(t.html_content), name).toBe(CLASSIC_HTML_SHA256[name])
+        for (const [name, hash] of Object.entries(CLASSIC_HTML_SHA256)) expect(sha(TEMPLATE_SET[name].html_content), name).toBe(hash)
     })
 
     it("only changes the HTML: subjects, text parts and variables are the same in every style", () => {

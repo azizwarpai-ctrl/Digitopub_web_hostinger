@@ -201,3 +201,28 @@ When every row of the **Go-live setup** checklist is ready except the last one:
 Set `NOTIFICATIONS_ENABLED=false` and Redeploy. All three jobs immediately become no-ops. Queued
 emails stay queued and resume when the switch goes back on. You can also **Pause** or **Cancel**
 a single campaign from its admin page.
+
+---
+
+## After go-live: journal messaging (epic #219)
+
+These features need no setup beyond the migrations, which the Hostinger build applies itself.
+
+- **Sender name.** Alerts show **DigitoPub** as the sender (`NOTIFY_FROM_NAME`). Issue alerts, invitations for a
+  list assigned to a journal, and messages to a journal's members show that **journal's title** instead. The
+  sending address is always the same mailbox, so SPF, DKIM and DMARC are unaffected. Each draft has a
+  **Sender name** field to change it.
+- **Assigning an uploaded list.** On the import's Confirm step, choose **General** or one journal. People from a
+  journal list follow that journal once they accept the invitation, which is sent in the journal's name.
+  People who were already subscribed are not changed.
+- **Inviting a journal's authors.** **Imports → Import authors from OJS** reads that journal's authors from
+  SubmitManager (read only) and opens the usual review. Only authors who accept the invitation receive
+  anything after it.
+- **New message.** **Campaigns → New message** writes to everyone, a journal's members, one uploaded list or
+  hand-picked people. Only confirmed subscribers are included. It creates a draft: send a test, then approve.
+- **Editing content.** On any draft, **Edit content** changes the HTML and plain text. Then:
+  **Save for this message only**, **Save as new template…**, or **Overwrite template…** (changes every future
+  email that uses it). The unsubscribe link, manage link and postal address cannot be removed.
+- After deploying this, click **Install starter data** once more (Settings → Go-live setup) to add the new
+  **notify_custom_message** letter template. The checklist shows "7 of 8 installed" until then. Your edited
+  templates are kept.

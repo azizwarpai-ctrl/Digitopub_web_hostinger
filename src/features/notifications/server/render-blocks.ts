@@ -13,13 +13,31 @@ import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
 const CLASSIC = EMAIL_STYLES.classic
 
 /** The only variables a notification template may insert as raw HTML. */
-export const RAW_BLOCK_VARIABLES = ["toc_html", "articles_html", "editor_note_html"] as const
+export const RAW_BLOCK_VARIABLES = ["toc_html", "articles_html", "editor_note_html", "message_html"] as const
 
 /** The editor's note as a quoted block, or "" when there is none (templates have no conditionals). */
 export function buildEditorNote(note: string | null | undefined, style: EmailStyle = CLASSIC): string {
     const text = note?.trim()
     if (!text) return ""
     return `<div style="margin:0 0 8px;padding:14px 18px;border-left:3px solid ${style.colors.accent};background:${style.colors.noteBg};font-family:${style.fonts.title};font-size:15px;line-height:1.6;color:${style.colors.ink}">${escapeHtml(text).replace(/\n/g, "<br>")}</div>`
+}
+
+/**
+ * An admin's plain-text message as email paragraphs: escaped, blank lines
+ * start a new paragraph, single line breaks are kept, and http(s) links
+ * become clickable. Safe to insert raw via {{{message_html}}}.
+ */
+export function buildMessage(message: string | null | undefined, style: EmailStyle = CLASSIC): { html: string; text: string } {
+    const text = (message ?? "").replace(/\r\n?/g, "\n").trim()
+    if (!text) return { html: "", text: "" }
+    // Runs on escaped text: a URL ends before whitespace or "<", and trailing punctuation stays outside the link.
+    const link = (escaped: string) =>
+        escaped.replace(/https?:\/\/[^\s<]*[^\s<.,;:!?)\]'"]/g, (url) => `<a href="${url}" style="color:${style.colors.accent}">${url}</a>`)
+    const html = text
+        .split(/\n{2,}/)
+        .map((para) => `<p class="ink" style="margin:0 0 16px;font-family:${style.fonts.body};font-size:16px;line-height:1.6;color:${style.colors.ink}">${link(escapeHtml(para.trim())).replace(/\n/g, "<br>")}</p>`)
+        .join("\n")
+    return { html, text }
 }
 
 type TocArticle = IssueSnapshot["articles"][number]

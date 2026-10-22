@@ -38,6 +38,7 @@ import {
   type CountItem,
 } from "../../api/use-campaigns"
 import { CampaignStatusBadge, campaignTypeLabel } from "./campaign-status"
+import { ContentEditorCard } from "./content-editor-card"
 
 const PROGRESS_STATUSES: CampaignStatus[] = ["scheduled", "queued", "sending", "paused", "sent"]
 /** Only campaigns that can still change on their own are polled. */
@@ -123,6 +124,9 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
   const update = useUpdateCampaign()
   const [fromName, setFromName] = useState(campaign.from_name ?? "")
   const [subject, setSubject] = useState(campaign.subject_override ?? "")
+  const isCustom = campaign.type === "custom"
+  const [heading, setHeading] = useState(campaign.message_heading ?? "")
+  const [message, setMessage] = useState(campaign.message ?? "")
   const [note, setNote] = useState(campaign.editor_note ?? "")
   const [excluded, setExcluded] = useState<string[]>(events.filter((e) => e.excluded).map((e) => e.id))
 
@@ -137,6 +141,7 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
         subject_override: subject.trim() || null,
         editor_note: note.trim() || null,
         excluded_event_ids: excluded,
+        ...(isCustom ? { message_heading: heading.trim() || null, message: message.trim() || null } : {}),
       },
     })
 
@@ -173,6 +178,29 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
             onChange={(e) => setSubject(e.target.value)}
           />
         </div>
+        {isCustom && (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="message-heading">Heading</Label>
+              <Input id="message-heading" value={heading} maxLength={200} onChange={(e) => setHeading(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="message-body">Message</Label>
+              <Textarea
+                id="message-body"
+                rows={8}
+                value={message}
+                maxLength={20000}
+                onChange={(e) => setMessage(e.target.value)}
+                aria-describedby="message-body-help"
+              />
+              <p id="message-body-help" className="text-xs text-muted-foreground">
+                Plain text. Leave an empty line between paragraphs; https:// links become clickable.
+              </p>
+            </div>
+          </>
+        )}
+        {!isCustom && (
         <div className="space-y-1.5">
           <Label htmlFor="editor-note">Editor note</Label>
           <Textarea
@@ -186,7 +214,9 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
             Shown in issue emails. Leave empty to omit it.
           </p>
         </div>
+        )}
 
+        {!isCustom && (
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Events</legend>
           {events.length === 0 ? (
@@ -216,6 +246,7 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
             </ul>
           )}
         </fieldset>
+        )}
 
         <div className="grid gap-6 sm:grid-cols-2">
           <CountList title="Recipients by journal" items={recipients.by_journal} />
@@ -554,6 +585,10 @@ export function CampaignDetailView({ id }: { id: string }) {
           <PreviewCard id={campaign.id} status={campaign.status} />
         </div>
       </div>
+
+      {campaign.status === "draft" && (
+        <ContentEditorCard key={`content-${campaign.id}-${campaign.updated_at}`} detail={detail} />
+      )}
     </div>
   )
 }
