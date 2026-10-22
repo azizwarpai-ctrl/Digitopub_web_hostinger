@@ -6,7 +6,9 @@
 
 import type { ArticleSnapshot, IssueSnapshot } from "../types/notification-types"
 import { SITE_NAME, getAppBaseUrl } from "./config"
-import { buildArticles, buildToc } from "./render-blocks"
+import { buildArticles, buildEditorNote, buildToc } from "./render-blocks"
+
+const EDITOR_NOTE = "This issue gathers recent work on digital workflows in orthodontic diagnosis and treatment."
 
 const base = () => getAppBaseUrl()
 
@@ -63,9 +65,10 @@ export function sampleVariables(templateName: string): Record<string, string> {
         case "notify_new_issue":
             return {
                 ...common,
-                journal_title: ISSUE.journal_title, journal_issn: ISSUE.journal_issn ?? "", journal_url: `${base()}/journals/1`,
+                journal_title: ISSUE.journal_title, journal_issn: ISSUE.journal_issn ?? "", journal_issn_line: `ISSN ${ISSUE.journal_issn}`, journal_url: `${base()}/journals/1`,
                 volume: "12", number: "3", year: "2026", issue_title: ISSUE.title ?? "", cover_url: "", issue_url: ISSUE.url,
-                editor_note: "This issue gathers recent work on digital workflows in orthodontic diagnosis and treatment.",
+                editor_note: EDITOR_NOTE,
+                editor_note_html: buildEditorNote(EDITOR_NOTE),
                 toc_html: toc.html, toc_text: toc.text,
             }
         case "notify_weekly_digest":

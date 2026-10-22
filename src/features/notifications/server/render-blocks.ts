@@ -10,7 +10,14 @@ import { escapeHtml } from "@/src/lib/email/renderer"
 import type { ArticleSnapshot, IssueSnapshot } from "../types/notification-types"
 
 /** The only variables a notification template may insert as raw HTML. */
-export const RAW_BLOCK_VARIABLES = ["toc_html", "articles_html"] as const
+export const RAW_BLOCK_VARIABLES = ["toc_html", "articles_html", "editor_note_html"] as const
+
+/** The editor's note as a quoted block, or "" when there is none (templates have no conditionals). */
+export function buildEditorNote(note: string | null | undefined): string {
+    const text = note?.trim()
+    if (!text) return ""
+    return `<div style="margin:0 0 8px;padding:14px 18px;border-left:3px solid #1F3A5F;background:#FAF8F3;font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#2B2B2B">${escapeHtml(text).replace(/\n/g, "<br>")}</div>`
+}
 
 type TocArticle = IssueSnapshot["articles"][number]
 

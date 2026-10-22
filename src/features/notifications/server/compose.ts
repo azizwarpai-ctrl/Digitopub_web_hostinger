@@ -15,7 +15,7 @@ import type { ArticleSnapshot, CampaignPayload, IssueSnapshot } from "../types/n
 import { SITE_NAME, getAppBaseUrl } from "./config"
 import { manageUrl } from "./public-service"
 import { getSettings } from "./admin-config-service"
-import { RAW_BLOCK_VARIABLES, buildArticles, buildToc } from "./render-blocks"
+import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
 
 export interface ComposeContext {
@@ -102,10 +102,13 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
                 ...vars,
                 journal_title: issue.journal_title,
                 journal_issn: issue.journal_issn ?? "",
+                journal_issn_line: issue.journal_issn ? `ISSN ${issue.journal_issn}` : "",
+                editor_note_html: buildEditorNote(payload.editor_note),
                 volume: issue.volume?.toString() ?? "",
                 number: issue.number ?? "",
                 year: issue.year?.toString() ?? "",
-                issue_title: issue.title ?? "",
+                // Untitled issues read as their citation line in the heading.
+                issue_title: issue.title || [issue.volume && `Vol. ${issue.volume}`, issue.number && `No. ${issue.number}`, issue.year && `(${issue.year})`].filter(Boolean).join(", ").replace(", (", " ("),
                 issue_url: issue.url,
                 journal_url: issue.url.replace(/\/issues\/.*$/, ""),
                 cover_url: issue.cover_url ?? "",
