@@ -18,7 +18,7 @@ import { getSettings } from "./admin-config-service"
 import { getEmailStyle, type EmailStyle } from "./email-styles"
 import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
-import { senderNameFor } from "./sender-name"
+import { campaignJournalTitle, senderNameFor } from "./sender-name"
 
 export interface ComposeContext {
     campaign: NotificationCampaign
@@ -33,6 +33,8 @@ export interface ComposeContext {
     style: EmailStyle
     /** From display name for this campaign; null means the default sender name. */
     senderName: string | null
+    /** Title of the campaign's journal (payload.journal_id), e.g. a journal-assigned list. */
+    journalTitle: string | null
 }
 
 export interface ComposeSubscriber extends AudienceSubscriber {
@@ -52,10 +54,12 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
         prisma.discipline.findMany({ select: { id: true, name: true } }),
         getSettings(),
     ])
+    const journalTitle = await campaignJournalTitle(campaign)
     return {
         campaign,
         template,
-        senderName: await senderNameFor(campaign, events),
+        journalTitle,
+        senderName: await senderNameFor(campaign, events, journalTitle),
         events: new Map(events.map((e) => [e.id.toString(), e])),
         rules,
         disciplineNames: new Map(disciplines.map((d) => [d.id.toString(), d.name])),
@@ -177,12 +181,13 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
                 })
             }
             const first = s.discipline_ids[0] ? ctx.disciplineNames.get(String(s.discipline_ids[0])) : undefined
+            // A journal-assigned list is invited to that journal's alerts, in its name.
             return {
                 ...vars,
                 confirm_url: `${getAppBaseUrl()}/notifications/confirm?token=${encodeURIComponent(token)}`,
                 expires_on: isoDate(expires),
                 inviter_org: SITE_NAME,
-                primary_discipline: first ?? "your field",
+                primary_discipline: ctx.journalTitle ?? first ?? "your field",
                 preheader: "Confirm to receive publication alerts. Nothing further is sent unless you do.",
             }
         }

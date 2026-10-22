@@ -34,10 +34,12 @@ import { useGetImportRows, type ImportRowFilter } from "@/src/features/notificat
 import { useMapImportTerms } from "@/src/features/notifications/api/use-map-import-terms"
 import { useConfirmImport } from "@/src/features/notifications/api/use-confirm-import"
 import { useCancelImport } from "@/src/features/notifications/api/use-cancel-import"
+import { useGetJournals } from "@/src/features/journals/api/use-get-journals"
 
 const MAX_ROWS = 10000
 const ACCEPT = ".xlsx,.xls,.csv,.txt"
 const NONE = "none"
+const GENERAL = "general"
 
 const STEPS = ["Upload", "Map columns", "Review", "Confirm"]
 
@@ -119,6 +121,8 @@ export default function NewImportPage() {
   const [cancelled, setCancelled] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
+  /** "general", a journal id, or "" until the admin chooses. */
+  const [assignTo, setAssignTo] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const inspectMutation = useInspectImport()
@@ -128,6 +132,9 @@ export default function NewImportPage() {
   const cancelMutation = useCancelImport()
 
   const { data: disciplines } = useGetDisciplines()
+  const { data: journals } = useGetJournals()
+  const activeJournals = (journals ?? []).filter((j) => (j.status ?? "active") === "active")
+  const assignedJournal = activeJournals.find((j) => String(j.id) === assignTo)
   const { data: imp } = useGetImport(importId)
   const { data: rows, isLoading: rowsLoading } = useGetImportRows(
     importId,
@@ -203,8 +210,9 @@ export default function NewImportPage() {
 
   const confirm = () => {
     if (!importId) return
+    if (!assignTo) return
     confirmMutation.mutate(
-      { id: importId },
+      { id: importId, journal_id: assignTo === GENERAL ? null : assignTo },
       { onSuccess: (res) => setConfirmedCount(res.data.created) },
     )
   }
@@ -549,6 +557,30 @@ export default function NewImportPage() {
             <CardDescription>{file?.name}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="assign-to">
+                Assign this list to <span className="text-destructive">(required)</span>
+              </Label>
+              <Select value={assignTo} onValueChange={setAssignTo}>
+                <SelectTrigger id="assign-to" className="w-full sm:w-96" aria-describedby="assign-to-help">
+                  <SelectValue placeholder="Choose a journal or General" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={GENERAL}>General (all journals, matched by discipline)</SelectItem>
+                  {activeJournals.map((j) => (
+                    <SelectItem key={j.id} value={String(j.id)}>
+                      {j.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p id="assign-to-help" className="text-xs text-muted-foreground">
+                {assignedJournal
+                  ? `The invitation is sent in the name of ${assignedJournal.title}. People who confirm follow this journal and receive its new-issue alerts.`
+                  : "General lists are invited by DigitoPub and receive alerts in their disciplines across all journals."}{" "}
+                People already subscribed are not changed.
+              </p>
+            </div>
             <ul className="list-inside list-disc text-sm">
               <li>{totals?.valid ?? 0} valid addresses will be added</li>
               <li>{totals?.invalid ?? 0} invalid, {totals?.duplicate ?? 0} duplicate, {totals?.existing ?? 0} already subscribed and {totals?.suppressed ?? 0} suppressed rows are skipped</li>
@@ -569,7 +601,7 @@ export default function NewImportPage() {
                   Cancel import
                 </Button>
               </div>
-              <Button onClick={confirm} disabled={confirmMutation.isPending || validCount === 0}>
+              <Button onClick={confirm} disabled={confirmMutation.isPending || validCount === 0 || !assignTo}>
                 {confirmMutation.isPending ? "Confirming..." : "Confirm import"}
               </Button>
             </div>

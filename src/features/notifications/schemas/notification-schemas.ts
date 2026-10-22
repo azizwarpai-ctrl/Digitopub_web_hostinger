@@ -14,6 +14,9 @@ const idString = z.string().regex(/^\d+$/, "Invalid ID")
 export const idParamSchema = z.object({ id: idString })
 
 /** Column map sent with an upload (multipart field `column_map`, JSON-encoded). */
+/** Confirm an import: assign it to a journal (id), to "General" (null), or keep its assignment (absent). */
+export const importConfirmSchema = z.object({ journal_id: idString.nullable().optional() })
+
 export const columnMapSchema = z.object({
     email: z.number().int().min(0),
     name: z.number().int().min(0).optional(),
@@ -38,6 +41,7 @@ export const subscriberListQuerySchema = z.object({
     source: z.enum(SUBSCRIBER_SOURCES).optional(),
     discipline_id: idString.optional(),
     journal_id: idString.optional(),
+    import_id: idString.optional(),
     q: z.string().trim().max(255).optional(),
 })
 

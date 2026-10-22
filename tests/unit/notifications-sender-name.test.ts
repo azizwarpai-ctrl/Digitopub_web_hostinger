@@ -14,14 +14,19 @@ vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail, cl
 const { automaticSenderName, senderNameFor } = await import("@/src/features/notifications/server/sender-name")
 const { cleanSenderName, defaultSenderName } = await import("@/src/lib/email/sender-display-name")
 const { SmtpNotificationTransport, notificationFromAddress } = await import("@/src/lib/email/notification-transport")
+const { campaignJournalTitle } = await import("@/src/features/notifications/server/sender-name")
+const { composeMessage } = await import("@/src/features/notifications/server/compose")
+const { TEMPLATE_SET } = await import("@/src/features/notifications/server/template-set")
+const { EMAIL_STYLES } = await import("@/src/features/notifications/server/email-styles")
 
-const ENV = ["NOTIFY_FROM_NAME", "NOTIFY_SMTP_HOST", "NOTIFY_SMTP_USER", "NOTIFY_SMTP_PASSWORD", "NOTIFY_SMTP_FROM_EMAIL"] as const
+const ENV = ["NOTIFY_TOKEN_SECRET", "NOTIFY_FROM_NAME", "NOTIFY_SMTP_HOST", "NOTIFY_SMTP_USER", "NOTIFY_SMTP_PASSWORD", "NOTIFY_SMTP_FROM_EMAIL"] as const
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
     vi.clearAllMocks()
     for (const k of ENV) saved[k] = process.env[k]
     delete process.env.NOTIFY_FROM_NAME
+    process.env.NOTIFY_TOKEN_SECRET = "test-secret-test-secret-test-secret-0123"
     process.env.NOTIFY_SMTP_HOST = "smtp.example.org"
     process.env.NOTIFY_SMTP_USER = "noreply@digitopub.com"
     process.env.NOTIFY_SMTP_PASSWORD = "x"
@@ -73,5 +78,33 @@ describe("sender display name", () => {
             '"Journal of Orthodontic Research" <noreply@digitopub.com>',
             '"DigitoPub" <noreply@digitopub.com>',
         ])
+    })
+
+    it("invites a journal-assigned list in the journal's name, about that journal", async () => {
+        const campaign = { id: 5n, type: "invitation", subject_override: null, payload: { import_id: "9", journal_id: "3" } } as any
+        const journalTitle = await campaignJournalTitle(campaign)
+        expect(journalTitle).toBe("Journal of Orthodontic Research")
+        const t = TEMPLATE_SET.notify_import_invitation
+        const ctx = {
+            campaign,
+            template: { subject: t.subject, html_content: t.html_content, text_content: t.text_content },
+            events: new Map(),
+            rules: [],
+            disciplineNames: new Map([["1", "Orthodontics"]]),
+            publisherAddress: "DigitoPub, 5 Real Road",
+            style: EMAIL_STYLES.classic,
+            journalTitle,
+            senderName: await senderNameFor(campaign, [], journalTitle),
+        } as any
+        const sub = { id: 0n, email: "a@example.org", name: "Dr A", status: "pending", token_version: 0, issue_alerts: true, article_frequency: "weekly", journal_ids: [], discipline_ids: [1n] }
+        const m = (await composeMessage(ctx, sub))!
+        expect(m.fromName).toBe("Journal of Orthodontic Research")
+        expect(m.subject).toBe("Invitation: publication alerts in Journal of Orthodontic Research")
+
+        // A General list keeps the discipline wording and the default sender.
+        const general = { ...ctx, campaign: { ...campaign, payload: { import_id: "9" } }, journalTitle: null, senderName: null }
+        const g = (await composeMessage(general, sub))!
+        expect(g.fromName).toBeNull()
+        expect(g.subject).toBe("Invitation: publication alerts in Orthodontics")
     })
 })

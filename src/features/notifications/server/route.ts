@@ -9,6 +9,7 @@ import { paginatedResponse, parsePagination } from "@/src/lib/pagination"
 import {
     columnMapSchema,
     idParamSchema,
+    importConfirmSchema,
     importRowsQuerySchema,
     subscriberCreateSchema,
     subscriberListQuerySchema,
@@ -200,9 +201,12 @@ const app = new Hono()
         }
     })
 
-    .post("/imports/:id/confirm", zValidator("param", idParamSchema), async (c) => {
+    .post("/imports/:id/confirm", zValidator("param", idParamSchema), zValidator("json", importConfirmSchema), async (c) => {
+        const { journal_id } = c.req.valid("json")
         try {
-            const result = await confirmImport(BigInt(c.req.valid("param").id))
+            const result = await confirmImport(BigInt(c.req.valid("param").id), {
+                journalId: journal_id === undefined ? undefined : journal_id === null ? null : BigInt(journal_id),
+            })
             if (!result) return fail(c, "Import not found", 404)
             return c.json({
                 success: true,

@@ -33,6 +33,7 @@ export interface SubscriberFilters {
   source?: string
   discipline_id?: string
   journal_id?: string
+  import_id?: string
   q?: string
 }
 
