@@ -65,6 +65,26 @@ export const JOURNAL_HOSTING_RATE_LIMIT = {
   keyPrefix: "jhost",
 } as const
 
+// ─── Publication notifications (#199) ────────────────────────────────
+/** Public alert sign-ups: 5 per IP per hour */
+export const NOTIFY_SUBSCRIBE_IP_RATE_LIMIT = {
+  maxRequests: 5,
+  windowMs: 60 * 60 * 1000,
+  keyPrefix: "notify:sub:ip",
+} as const
+/** Confirmation emails: 3 per address per hour (over the limit, nothing is sent; the response stays generic) */
+export const NOTIFY_SUBSCRIBE_EMAIL_RATE_LIMIT = {
+  maxRequests: 3,
+  windowMs: 60 * 60 * 1000,
+  keyPrefix: "notify:sub:email",
+} as const
+/** Token endpoints (confirm, preferences, unsubscribe): 30 per IP per 15 minutes */
+export const NOTIFY_TOKEN_RATE_LIMIT = {
+  maxRequests: 30,
+  windowMs: 15 * 60 * 1000,
+  keyPrefix: "notify:token",
+} as const
+
 export interface MultiLimitResult extends RateLimitResult {
   /** Which window tripped first; null when allowed. */
   triggered: string | null

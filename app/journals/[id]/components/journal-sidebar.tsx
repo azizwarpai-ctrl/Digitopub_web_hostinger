@@ -26,6 +26,8 @@ export function JournalSidebar({
       <JournalQuickActions
         submissionUrl={submissionUrl}
         onTabChange={onTabChange}
+        journalId={journal.id}
+        journalTitle={journal.title}
       />
 
       {/* Journal highlights and Custom Blocks from OJS */}

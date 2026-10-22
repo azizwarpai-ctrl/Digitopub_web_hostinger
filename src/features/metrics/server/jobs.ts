@@ -1,4 +1,5 @@
 import { prisma } from "@/src/lib/db/config"
+import { PENDING_SUBSCRIBER_RETENTION_DAYS } from "@/src/features/notifications/server/config"
 
 /**
  * Core logic for the recurring metrics jobs, extracted from the `scripts/`
@@ -215,11 +216,18 @@ const IMPORT_STAGING_RETENTION_DAYS = 14
  * batches. `deadlineMs` is a soft wall-clock budget for the HTTP trigger
  * (shared-hosting request timeout); when exceeded the job returns
  * `completed: false` and the next scheduled run resumes where it left off.
- * Also purges subscriber-import staging rows older than 14 days.
+ * Also purges subscriber-import staging rows older than 14 days and
+ * pending (never-confirmed) alert subscribers older than 90 days.
  */
 export async function retentionCleanup(
     opts: { deadlineMs?: number } = {}
-): Promise<{ cutoff: string; totalDeleted: number; completed: boolean; importRowsDeleted: number }> {
+): Promise<{
+    cutoff: string
+    totalDeleted: number
+    completed: boolean
+    importRowsDeleted: number
+    pendingSubscribersDeleted: number
+}> {
     const deadline = opts.deadlineMs ? Date.now() + opts.deadlineMs : null
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
     let totalDeleted = 0
@@ -242,5 +250,17 @@ export async function retentionCleanup(
     }
     const stagingCutoff = new Date(Date.now() - IMPORT_STAGING_RETENTION_DAYS * 24 * 60 * 60 * 1000)
     const staging = await prisma.subscriberImportRow.deleteMany({ where: { created_at: { lt: stagingCutoff } } })
-    return { cutoff: cutoff.toISOString(), totalDeleted, completed, importRowsDeleted: staging.count }
+    // Never-confirmed opt-ins (public form or import invitations) are not kept;
+    // updated_at, so a fresh confirmation request restarts the clock.
+    const pendingCutoff = new Date(Date.now() - PENDING_SUBSCRIBER_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const pending = await prisma.notificationSubscriber.deleteMany({
+        where: { status: "pending", confirmed_at: null, updated_at: { lt: pendingCutoff } },
+    })
+    return {
+        cutoff: cutoff.toISOString(),
+        totalDeleted,
+        completed,
+        importRowsDeleted: staging.count,
+        pendingSubscribersDeleted: pending.count,
+    }
 }

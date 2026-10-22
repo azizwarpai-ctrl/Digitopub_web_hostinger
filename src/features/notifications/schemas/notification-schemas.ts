@@ -67,3 +67,39 @@ export type ColumnMapInput = z.infer<typeof columnMapSchema>
 export type SubscriberListQuery = z.infer<typeof subscriberListQuerySchema>
 export type SubscriberCreateInput = z.infer<typeof subscriberCreateSchema>
 export type SubscriberUpdateInput = z.infer<typeof subscriberUpdateSchema>
+
+// ─── Public (#199) ────────────────────────────────────────────────────
+
+/** Names are rendered into emails; the renderer escapes nothing until #202, so markup characters are refused. */
+const publicName = z
+    .string()
+    .trim()
+    .max(120)
+    .regex(/^[^<>"&]*$/, "Name contains unsupported characters")
+
+const tokenString = z.string().min(20).max(512)
+
+export const publicSubscribeSchema = z.object({
+    email: z.email().max(255),
+    name: publicName.optional(),
+    journal_ids: z.array(idString).max(50).default([]),
+    discipline_ids: z.array(idString).max(100).default([]),
+    /** Honeypot: real browsers leave it empty. */
+    website: z.string().max(200).optional(),
+})
+
+export const tokenBodySchema = z.object({ token: tokenString })
+
+export const preferencesSchema = z.object({
+    token: tokenString,
+    journal_ids: z.array(idString).max(50),
+    discipline_ids: z.array(idString).max(100),
+    article_frequency: z.enum(ARTICLE_FREQUENCIES),
+    issue_alerts: z.boolean(),
+    resume: z.boolean().optional(),
+})
+
+export const accountSubscribeSchema = publicSubscribeSchema.omit({ website: true })
+
+export type PublicSubscribeInput = z.infer<typeof publicSubscribeSchema>
+export type PreferencesBody = z.infer<typeof preferencesSchema>

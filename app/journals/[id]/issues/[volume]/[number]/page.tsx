@@ -11,6 +11,7 @@ import { fetchIssueIdByVolumeNumber, fetchIssueWithArticles } from "@/src/featur
 import { ArticleItem } from "../../../components/article-item"
 import type { CurrentIssueArticle } from "@/src/features/journals"
 import { ShareIssueButton } from "./share-issue-button"
+import { GetAlertsButton } from "@/src/features/notifications/components/get-alerts-dialog"
 import { buildCanonical } from "@/src/lib/seo/canonical"
 import { AudioPlayerProvider } from "@/src/components/audio-player-context"
 
@@ -115,7 +116,13 @@ export default async function IssueDetailPage({ params }: PageProps) {
               </h1>
 
               {/* Share button */}
-              <ShareIssueButton issuePath={issuePath} />
+              <div className="flex items-center gap-2 shrink-0">
+                <GetAlertsButton
+                  journalId={journalLookup.prismaId ? String(journalLookup.prismaId) : undefined}
+                  variant="outline"
+                />
+                <ShareIssueButton issuePath={issuePath} />
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground font-medium">
