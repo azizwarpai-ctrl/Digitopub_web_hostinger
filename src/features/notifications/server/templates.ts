@@ -1,12 +1,14 @@
 import type { PrismaClient } from "@prisma/client"
 
-import { TEMPLATE_SET, type TemplateDefinition } from "./template-set"
+import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
+import { TEMPLATE_SET, buildTemplateSet, type TemplateDefinition } from "./template-set"
 
 /**
  * Notification email templates referenced by campaigns. Campaigns need a real
  * `email_templates` row (FK), so the shipped version (template-set.ts, #203)
  * is created on first use if the seed has not run. Admin edits are never
- * overwritten here; "Reset to default" and `seed --force` restore them.
+ * overwritten here; "Reset to default" and `seed --force` restore them, in
+ * the active email style when the caller passes it.
  */
 
 export const NOTIFICATION_TEMPLATE_KEYS = {
@@ -23,15 +25,25 @@ export type TemplateKey = (typeof NOTIFICATION_TEMPLATE_KEYS)[keyof typeof NOTIF
 
 const DEFAULTS = TEMPLATE_SET as Record<TemplateKey, TemplateDefinition>
 
+const setCache = new Map<string, Record<string, TemplateDefinition>>([["classic", TEMPLATE_SET]])
+
+/** The shipped set drawn in `style` (memoised: the set is pure). */
+export function templateSetFor(style: EmailStyle = EMAIL_STYLES.classic): Record<string, TemplateDefinition> {
+    let set = setCache.get(style.key)
+    if (!set) setCache.set(style.key, (set = buildTemplateSet(style)))
+    return set
+}
+
 /** Returns the template id, creating the shipped template if it does not exist. */
 export async function ensureNotificationTemplate(
     db: Pick<PrismaClient, "emailTemplate">,
     key: TemplateKey,
+    style?: EmailStyle,
 ): Promise<bigint> {
     const row = await db.emailTemplate.upsert({
         where: { name: key },
         update: {},
-        create: { name: key, category: "notification", is_active: true, ...DEFAULTS[key] },
+        create: { name: key, category: "notification", is_active: true, ...(style ? templateSetFor(style)[key] : DEFAULTS[key]) },
         select: { id: true },
     })
     return row.id
@@ -39,9 +51,9 @@ export async function ensureNotificationTemplate(
 
 export type TemplateDefaults = TemplateDefinition
 
-/** The shipped version of a notification template, or null for other names. */
-export function getDefaultTemplate(name: string): TemplateDefaults | null {
-    return (DEFAULTS as Record<string, TemplateDefinition>)[name] ?? null
+/** The shipped version of a notification template in `style`, or null for other names. */
+export function getDefaultTemplate(name: string, style?: EmailStyle): TemplateDefaults | null {
+    return templateSetFor(style)[name] ?? null
 }
 
 /**
@@ -50,10 +62,10 @@ export function getDefaultTemplate(name: string): TemplateDefaults | null {
  */
 export async function seedNotificationTemplates(
     db: Pick<PrismaClient, "emailTemplate">,
-    opts: { force?: boolean } = {},
+    opts: { force?: boolean; style?: EmailStyle } = {},
 ): Promise<{ created: string[]; restored: string[]; kept: string[] }> {
     const result = { created: [] as string[], restored: [] as string[], kept: [] as string[] }
-    for (const [name, t] of Object.entries(DEFAULTS)) {
+    for (const [name, t] of Object.entries(templateSetFor(opts.style))) {
         const existing = await db.emailTemplate.findUnique({ where: { name }, select: { id: true } })
         if (!existing) {
             await db.emailTemplate.create({ data: { name, category: "notification", is_active: true, ...t } })

@@ -6,6 +6,7 @@
 
 import type { ArticleSnapshot, IssueSnapshot } from "../types/notification-types"
 import { SITE_NAME, getAppBaseUrl } from "./config"
+import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
 import { buildArticles, buildEditorNote, buildToc } from "./render-blocks"
 
 const EDITOR_NOTE = "This issue gathers recent work on digital workflows in orthodontic diagnosis and treatment."
@@ -47,8 +48,8 @@ const ISSUE: IssueSnapshot = {
     articles: ARTICLES.map(({ title, authors, doi, section, is_open_access, url }) => ({ title, authors, doi, section, is_open_access, url })),
 }
 
-/** Sample variables for a template name; non-notification templates get the common set only. */
-export function sampleVariables(templateName: string): Record<string, string> {
+/** Sample variables for a template name, with blocks drawn in `style`; non-notification templates get the common set only. */
+export function sampleVariables(templateName: string, style: EmailStyle = EMAIL_STYLES.classic): Record<string, string> {
     const common: Record<string, string> = {
         recipient_name: "Dr Jane Doe",
         site_name: SITE_NAME,
@@ -59,8 +60,8 @@ export function sampleVariables(templateName: string): Record<string, string> {
         publisher_address: "DigitoPub, 1 Example Street, 00000 City, Country",
         preheader: "Sample preview",
     }
-    const toc = buildToc(ISSUE)
-    const digest = buildArticles(ARTICLES.map((a) => ({ snapshot: a, disciplineName: a.section })))
+    const toc = buildToc(ISSUE, style)
+    const digest = buildArticles(ARTICLES.map((a) => ({ snapshot: a, disciplineName: a.section })), style)
     switch (templateName) {
         case "notify_new_issue":
             return {
@@ -68,7 +69,7 @@ export function sampleVariables(templateName: string): Record<string, string> {
                 journal_title: ISSUE.journal_title, journal_issn: ISSUE.journal_issn ?? "", journal_issn_line: `ISSN ${ISSUE.journal_issn}`, journal_url: `${base()}/journals/1`,
                 volume: "12", number: "3", year: "2026", issue_title: ISSUE.title ?? "", cover_url: "", issue_url: ISSUE.url,
                 editor_note: EDITOR_NOTE,
-                editor_note_html: buildEditorNote(EDITOR_NOTE),
+                editor_note_html: buildEditorNote(EDITOR_NOTE, style),
                 toc_html: toc.html, toc_text: toc.text,
             }
         case "notify_weekly_digest":

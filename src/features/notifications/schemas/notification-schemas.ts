@@ -7,6 +7,7 @@ import {
     SUBSCRIBER_STATUSES,
     SUPPRESSED_STATUSES,
 } from "../constants"
+import { EMAIL_STYLE_KEYS } from "../server/email-styles"
 
 const idString = z.string().regex(/^\d+$/, "Invalid ID")
 
@@ -152,6 +153,20 @@ export const disciplineUpdateSchema = z.object({
 export const disciplineIdsSchema = z.object({ discipline_ids: z.array(idString).max(200) })
 
 export const deliverabilityTestSchema = z.object({ to: z.email().max(255) })
+
+export const emailStyleParamSchema = z.object({ key: z.enum(EMAIL_STYLE_KEYS) })
+/** Keep in step with NOTIFICATION_TEMPLATE_KEYS (server/templates.ts); a unit test checks it. */
+export const STYLE_PREVIEW_TEMPLATES = [
+    "notify_new_issue",
+    "notify_weekly_digest",
+    "notify_daily_digest",
+    "notify_subscription_confirm",
+    "notify_import_invitation",
+    "notify_welcome",
+    "notify_preferences_updated",
+] as const
+export const stylePreviewQuerySchema = z.object({ template: z.enum(STYLE_PREVIEW_TEMPLATES).default("notify_new_issue") })
+export const applyStyleSchema = z.object({ overwriteCustomised: z.boolean().optional() })
 
 export const settingsSchema = z.object({
     publisher_address: z.string().trim().max(500).optional(),

@@ -13,7 +13,8 @@ import {
     type SendOutcome,
 } from "@/src/lib/email/notification-transport"
 
-import { getSettings } from "./admin-config-service"
+import { getActiveEmailStyle, getSettings } from "./admin-config-service"
+import { getEmailStyle } from "./email-styles"
 import { listUnsubscribeHeaders } from "./compose"
 import { isNotificationsEnabled } from "./config"
 import { RAW_BLOCK_VARIABLES } from "./render-blocks"
@@ -23,7 +24,7 @@ import { NOTIFICATION_TEMPLATE_KEYS, getDefaultTemplate, seedNotificationTemplat
 
 export async function installDefaults() {
     const seeded = await seedNotificationDefaults(prisma)
-    const templates = await seedNotificationTemplates(prisma)
+    const templates = await seedNotificationTemplates(prisma, { style: await getActiveEmailStyle() })
     return {
         disciplines: seeded.disciplines,
         rules: seeded.rules,
@@ -40,9 +41,10 @@ export async function sendDeliverabilityTest(to: string): Promise<SendOutcome> {
         where: { name: TEST_TEMPLATE },
         select: { subject: true, html_content: true, text_content: true },
     })
-    const t = stored ?? getDefaultTemplate(TEST_TEMPLATE)!
     const settings = await getSettings()
-    const vars = sampleVariables(TEST_TEMPLATE)
+    const style = getEmailStyle(settings.email_style)
+    const t = stored ?? getDefaultTemplate(TEST_TEMPLATE, style)!
+    const vars = sampleVariables(TEST_TEMPLATE, style)
     if (settings.publisher_address) vars.publisher_address = settings.publisher_address
     vars.preheader = "Deliverability test of the publication alert format"
     return getNotificationTransport().send({

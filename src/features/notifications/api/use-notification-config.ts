@@ -65,6 +65,7 @@ export interface NotificationSettings {
   publisher_address: string
   weekly_digest_day: number
   consent_text_version: string
+  email_style: "classic" | "modern" | "minimal"
 }
 
 export interface NotificationSettingsView {
