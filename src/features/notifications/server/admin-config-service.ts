@@ -26,6 +26,8 @@ export interface NotificationSettings {
     consent_text_version: string
     /** Design of every notification email (style gallery). */
     email_style: EmailStyleKey
+    /** Saved addresses that pre-fill every "Send test" box (#224). */
+    test_recipients: string[]
 }
 
 export const DEFAULT_SETTINGS: NotificationSettings = {
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
     weekly_digest_day: 1,
     consent_text_version: "public-form-v1",
     email_style: DEFAULT_EMAIL_STYLE,
+    test_recipients: [],
 }
 
 export async function getSettings(): Promise<NotificationSettings> {

@@ -62,7 +62,9 @@ import {
     settingsSchema,
     stylePreviewQuerySchema,
 } from "../schemas/notification-schemas"
-import { getReadiness, installDefaults, sendDeliverabilityTest, takeDeliverabilityTestSlot } from "./go-live-service"
+import { getReadiness, installDefaults, sendDeliverabilityTest } from "./go-live-service"
+import { TEST_BUDGET_MESSAGE, describeTestSend, takeTestSendBudget, type TestSendResult } from "./test-send-budget"
+import { MAX_TEST_RECIPIENTS, collectRecipients } from "@/src/lib/email/email-list"
 import { applyStyle, listStyles, previewStyle } from "./style-gallery-service"
 import { ContentGuardError } from "./content-guard"
 import { CampaignInputError, createCustomCampaign, overwriteDraftTemplate, saveDraftAsTemplate } from "./custom-campaign-service"
@@ -115,6 +117,12 @@ async function readUpload(c: Context): Promise<
         }
     }
     return { ok: true, bytes: new Uint8Array(await file.arrayBuffer()), fileName: file.name, body }
+}
+
+/** 200 when at least one test went out (failures listed), 502 when every address failed. */
+function testSendResponse(c: Context, r: TestSendResult) {
+    if (r.sent.length === 0) return c.json({ success: false as const, error: describeTestSend(r), data: r }, 502)
+    return c.json({ success: true as const, data: r, message: describeTestSend(r) }, 200)
 }
 
 function handleKnownErrors(c: Context, e: unknown) {
@@ -369,12 +377,15 @@ const app = new Hono()
     })
     .post("/campaigns/:id/test", zValidator("param", idParamSchema), zValidator("json", campaignTestSchema), async (c) => {
         const session = c.get("session" as never) as { email: string; full_name?: string }
-        const to = c.req.valid("json").to || session.email
+        // No address given: the admin's own, as before.
+        const recipients = collectRecipients(c.req.valid("json"))
+        if (!recipients.length) recipients.push(session.email)
+        if (recipients.length > MAX_TEST_RECIPIENTS) return fail(c, `At most ${MAX_TEST_RECIPIENTS} test addresses`, 400)
+        if (!takeTestSendBudget(recipients.length)) return c.json({ success: false as const, error: TEST_BUDGET_MESSAGE }, 429)
         try {
-            const r = await sendCampaignTest(BigInt(c.req.valid("param").id), to, session.full_name || "Colleague")
+            const r = await sendCampaignTest(BigInt(c.req.valid("param").id), recipients, session.full_name || "Colleague")
             if (!r) return fail(c, "Campaign not found", 404)
-            if (!r.ok) return c.json({ success: false, error: r.error }, 502)
-            return c.json({ success: true, message: `Test sent to ${to}` })
+            return testSendResponse(c, r)
         } catch (e) {
             if (e instanceof CampaignStateError) return fail(c, e.message, 409)
             throw e
@@ -457,12 +468,10 @@ const app = new Hono()
     .post("/settings/install-defaults", async (c) =>
         c.json({ success: true, data: await installDefaults(), message: "Starter data installed" }))
     .post("/settings/deliverability-test", zValidator("json", deliverabilityTestSchema), async (c) => {
-        if (!takeDeliverabilityTestSlot()) {
-            return c.json({ success: false as const, error: "At most 10 deliverability tests per hour" }, 429)
-        }
-        const result = await sendDeliverabilityTest(c.req.valid("json").to)
-        if (!result.ok) return c.json({ success: false as const, error: result.error }, 502)
-        return c.json({ success: true, data: null, message: "Test email sent" })
+        const recipients = collectRecipients(c.req.valid("json"))
+        if (recipients.length > MAX_TEST_RECIPIENTS) return fail(c, `At most ${MAX_TEST_RECIPIENTS} test addresses`, 400)
+        if (!takeTestSendBudget(recipients.length)) return c.json({ success: false as const, error: TEST_BUDGET_MESSAGE }, 429)
+        return testSendResponse(c, await sendDeliverabilityTest(recipients))
     })
 
     // ─── Email style gallery ──────────────────────────────────────────

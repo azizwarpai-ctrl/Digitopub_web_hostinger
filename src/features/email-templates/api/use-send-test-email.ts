@@ -14,10 +14,10 @@ export function useSendTestEmail() {
   return useMutation({
     mutationFn: async ({ param, json }: { param: { id: string }, json: EmailTemplateSendTest }) => {
       const res = await client["email-templates"][":id"]["send-test"].$post({ param, json })
-      return parseRpcResponse(res, "Failed to send test email")
+      return parseRpcResponse<{ message?: string }>(res, "Failed to send test email")
     },
-    onSuccess: () => {
-      toast.success("Test email sent successfully!")
+    onSuccess: (body) => {
+      toast.success(body.message ?? "Test email sent")
     },
     onError: (error: Error) => {
       console.error("Error sending test email:", error)

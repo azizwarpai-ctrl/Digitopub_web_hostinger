@@ -10,8 +10,14 @@ vi.mock("@/src/lib/db/auth", () => ({
     createSession: vi.fn(),
     destroySession: vi.fn(),
 }))
+const sentMail: any[] = []
 vi.mock("@/src/lib/email/notification-transport", () => ({
-    getNotificationTransport: () => ({ send: vi.fn(async () => ({ ok: true })) }),
+    getNotificationTransport: () => ({
+        send: vi.fn(async (m: any) => {
+            sentMail.push(m)
+            return m.to.startsWith("bounce") ? { ok: false, permanent: true, error: "550 no such user" } : { ok: true }
+        }),
+    }),
     notificationFromAddress: () => '"DigitoPub" <noreply@digitopub.com>',
 }))
 
@@ -44,6 +50,8 @@ const prismaMock: any = {
             : { id: s.id })),
     },
     journal: { findUnique: vi.fn(async ({ where }: any) => byId(db.journals, where.id)) },
+    discipline: { findMany: vi.fn(async () => []) },
+    publicationEvent: { findMany: vi.fn(async () => []) },
     subscriberImport: { findUnique: vi.fn(async ({ where }: any) => byId(db.imports, where.id)) },
     systemSetting: { findUnique: vi.fn(async () => null) },
     emailTemplate: {
@@ -99,6 +107,8 @@ const send = (method: string, path: string, json?: unknown) => app().request(`/n
 
 beforeEach(() => {
     vi.clearAllMocks()
+    sentMail.length = 0
+    process.env.NOTIFY_TOKEN_SECRET = "test-secret-test-secret-test-secret-0123"
     seq = 100n
     mockSession = { id: "7", email: "admin@example.org", role: "admin" }
     db.journals = [{ id: 10n, title: "Journal of Orthodontic Research", status: "active" }, { id: 11n, title: "Closed", status: "inactive" }]
@@ -211,5 +221,40 @@ describe("editing content and templates", () => {
         expect((await send("POST", `/campaigns/${id}/save-as-template`, { name: "x_y" })).status).toBe(409)
         expect((await send("POST", `/campaigns/${id}/save-as-template`, { name: "Bad Name" })).status).toBe(400)
         expect((await send("POST", "/campaigns/999/overwrite-template")).status).toBe(404)
+    })
+})
+
+describe("test sends to several addresses", () => {
+    async function customDraft() {
+        await send("POST", "/campaigns", { audience: { kind: "journal", journal_id: "10" }, subject: "Call for papers", message: "Hello" })
+        return db.campaigns[0].id
+    }
+
+    it("sends the [TEST] message to each address under the journal's name, reporting failures", async () => {
+        const id = await customDraft()
+        const res = await send("POST", `/campaigns/${id}/test`, { recipients: ["Editor@x.org", "bounce@x.org", "editor@x.org", "chief@x.org"] })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.data).toEqual({ sent: ["editor@x.org", "chief@x.org"], failed: [{ to: "bounce@x.org", error: "550 no such user" }] })
+        expect(body.message).toBe("Test sent to 2 of 3 addresses")
+        expect(sentMail.map((m) => m.to)).toEqual(["editor@x.org", "bounce@x.org", "chief@x.org"])
+        expect(sentMail.every((m) => m.subject === "[TEST] Call for papers")).toBe(true)
+        expect(sentMail.every((m) => m.fromName === "Journal of Orthodontic Research")).toBe(true)
+    })
+
+    it("defaults to the admin's own address and refuses more than 10", async () => {
+        const id = await customDraft()
+        expect((await send("POST", `/campaigns/${id}/test`, {})).status).toBe(200)
+        expect(sentMail.map((m) => m.to)).toEqual(["admin@example.org"])
+        const eleven = Array.from({ length: 11 }, (_, i) => `t${i}@x.org`)
+        expect((await send("POST", `/campaigns/${id}/test`, { recipients: eleven })).status).toBe(400)
+        expect((await send("POST", `/campaigns/${id}/test`, { recipients: ["not-an-email"] })).status).toBe(400)
+    })
+
+    it("returns 502 when every address fails", async () => {
+        const id = await customDraft()
+        const res = await send("POST", `/campaigns/${id}/test`, { recipients: ["bounce1@x.org", "bounce2@x.org"] })
+        expect(res.status).toBe(502)
+        expect((await res.json()).error).toBe("Test sent to 0 of 2 addresses")
     })
 })
