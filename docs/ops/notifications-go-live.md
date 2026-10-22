@@ -28,15 +28,19 @@ Each PR is stacked on the previous one.
 Hostinger rebuilds the site after the merge. The build runs `prisma migrate deploy` itself, so
 **the database migrations need no action**. The migrations only add new tables and one new column.
 
-## Step 2. Create the alerts mailbox
+## Step 2. The sending mailbox
 
-In hPanel, open **Emails** for `digitopub.com`, then **Create email account**:
+Alerts are sent from the existing, already configured mailbox **`noreply@digitopub.com`**. You
+need its password, from hPanel, **Emails**, `digitopub.com`, for Step 3. If you do not know the
+password, reset it there, then update `SMTP_PASSWORD` too, because OTP and admin mail use the
+same mailbox.
 
-- Address: `alerts@digitopub.com`
-- Password: a long random one. Keep it for Step 3.
+Alerts and OTP/admin mail share this mailbox's reputation and sending limits. Keep the alert
+limits in Step 3 low enough to leave room for OTP codes. If complaints ever rise, move alerts to a
+dedicated mailbox by changing only the `NOTIFY_SMTP_*` values.
 
-Optionally also create `unsubscribe@digitopub.com`, as a mailbox or an alias of the alerts
-mailbox. Mail clients use it for "mailto" unsubscribes.
+Optionally create `unsubscribe@digitopub.com`, as a mailbox or an alias. Mail clients use it for
+"mailto" unsubscribes.
 
 While you are in Emails, look up the plan's **sending limits** (emails per hour and per day). Your
 plan details or Hostinger support can tell you. You need them in Step 3.
@@ -72,18 +76,17 @@ value for two variables.
 | `NOTIFY_SMTP_HOST` | `smtp.hostinger.com` | hPanel, Emails, the mailbox, "Connect apps and devices" (SMTP settings) |
 | `NOTIFY_SMTP_PORT` | `465` | Same panel |
 | `NOTIFY_SMTP_SECURE` | `true` | `true` for port 465 (SSL) |
-| `NOTIFY_SMTP_USER` | `alerts@digitopub.com` | The mailbox from Step 2 |
+| `NOTIFY_SMTP_USER` | `noreply@digitopub.com` | The mailbox from Step 2 |
 | `NOTIFY_SMTP_PASSWORD` | the mailbox password | Set in Step 2 |
-| `NOTIFY_SMTP_FROM_EMAIL` | `alerts@digitopub.com` | Must be the same mailbox, or SPF and DMARC alignment fails |
+| `NOTIFY_SMTP_FROM_EMAIL` | `noreply@digitopub.com` | Must be the same mailbox, or SPF and DMARC alignment fails |
 | `NOTIFY_FROM_NAME` | `DigitoPub Alerts` | Display name in the inbox |
 | `NOTIFY_UNSUBSCRIBE_MAILTO` | `unsubscribe@digitopub.com` | Optional. Leave it unset if you skipped that mailbox. |
-| `NOTIFY_MAX_PER_HOUR` | about 80% of the plan's hourly limit | From Step 2. The default is `60`. |
+| `NOTIFY_MAX_PER_HOUR` | about 80% of the plan's hourly limit, minus your usual OTP/admin volume | From Step 2. The default is `60`. |
 | `NOTIFY_MAX_PER_DAY` | about 80% of the plan's daily limit | From Step 2. The default is `300`. During warm-up, use the week's target (see `email-deliverability.md`). |
 | `NOTIFY_MAX_PER_RUN` | `20` | Emails per 5-minute tick. Keep it at or below `NOTIFY_MAX_PER_HOUR` divided by 12. |
 | `NOTIFICATIONS_ENABLED` | `false` | **Keep it false for now.** It is switched on in Step 8. |
 
-Leave the existing `SMTP_*` variables alone. They still send OTP codes and admin mail from the
-transactional mailbox, so bulk alerts never damage that mailbox's reputation.
+Leave the existing `SMTP_*` variables alone. They keep sending OTP codes and admin mail.
 
 ## Step 4. Install starter data and fill in settings
 
@@ -159,7 +162,7 @@ lookup tool such as <https://mxtoolbox.com/SuperTool.aspx> (SPF, DKIM and DMARC 
 1. Open <https://www.mail-tester.com> and copy the address it shows.
 2. In the admin, open **Notifications**, **Settings**, **Go-live setup**, **Deliverability test**.
    Paste the address and click **Send test**.
-   - The test is a sample new-issue alert sent through the **alerts mailbox**, with the same
+   - The test is a sample new-issue alert sent through the **sending mailbox** (`noreply@`), with the same
      unsubscribe headers as real alerts. It works while sending is still disabled.
    - It is limited to 10 tests per hour.
 3. Back on mail-tester.com, click **Then check your score**.
