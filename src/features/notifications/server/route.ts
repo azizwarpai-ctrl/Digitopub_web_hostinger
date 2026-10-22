@@ -10,6 +10,7 @@ import {
     columnMapSchema,
     idParamSchema,
     importConfirmSchema,
+    importFromOjsSchema,
     importRowsQuerySchema,
     subscriberCreateSchema,
     subscriberListQuerySchema,
@@ -67,6 +68,7 @@ import {
     cancelImport,
     confirmImport,
     createImport,
+    createImportFromOjsAuthors,
     getImport,
     ImportStateError,
     inspectImportFile,
@@ -83,7 +85,7 @@ import {
     updateSubscriber,
 } from "./subscriber-service"
 
-const fail = (c: Context, error: string, status: 400 | 404 | 409 | 413) =>
+const fail = (c: Context, error: string, status: 400 | 404 | 409 | 413 | 502) =>
     c.json({ success: false as const, error }, status)
 
 /** Reads the multipart `file` field and enforces the size limit. */
@@ -170,6 +172,18 @@ const app = new Hono()
             return c.json({ success: true, data: serializeRecord(created) }, 201)
         } catch (e) {
             return handleKnownErrors(c, e)
+        }
+    })
+
+    .post("/imports/from-ojs", zValidator("json", importFromOjsSchema), async (c) => {
+        const session = c.get("session" as never) as { id: string }
+        try {
+            const created = await createImportFromOjsAuthors(BigInt(c.req.valid("json").journal_id), BigInt(session.id))
+            return c.json({ success: true, data: serializeRecord(created) }, 201)
+        } catch (e) {
+            if (e instanceof ImportStateError) return fail(c, e.message, 409)
+            console.error("[Notifications] OJS author import failed:", e instanceof Error ? e.message : e)
+            return fail(c, "Could not read authors from OJS. Try again later.", 502)
         }
     })
 

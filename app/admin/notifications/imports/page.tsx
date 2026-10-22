@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Plus } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Plus, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useGetJournals } from "@/src/features/journals/api/use-get-journals"
+import { useCreateOjsAuthorImport } from "@/src/features/notifications/api/use-create-ojs-author-import"
 import { useGetImports } from "@/src/features/notifications/api/use-get-imports"
 
 const STATUS_STYLES: Record<string, string> = {
@@ -26,9 +39,63 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Failed",
 }
 
+/** Picks a journal and stages its OJS authors, then opens the review step of the import wizard. */
+function OjsAuthorsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const router = useRouter()
+  const { data: journals } = useGetJournals()
+  const linked = (journals ?? []).filter((j) => j.ojs_id && (j.status ?? "active") === "active")
+  const [journalId, setJournalId] = useState("")
+  const create = useCreateOjsAuthorImport()
+
+  const start = () =>
+    create.mutate(
+      { journal_id: journalId },
+      { onSuccess: (imp) => router.push(`/admin/notifications/imports/new?import=${imp.id}`) },
+    )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import authors from OJS</DialogTitle>
+          <DialogDescription>
+            Collects the authors of a journal&apos;s submissions on SubmitManager (read only). You review the list
+            before anything happens. Confirmed people are invited in the journal&apos;s name and receive its alerts
+            only if they accept.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="ojs-journal">Journal</Label>
+          <Select value={journalId} onValueChange={setJournalId}>
+            <SelectTrigger id="ojs-journal" className="w-full">
+              <SelectValue placeholder="Choose a journal" />
+            </SelectTrigger>
+            <SelectContent>
+              {linked.map((j) => (
+                <SelectItem key={j.id} value={String(j.id)}>
+                  {j.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={start} disabled={!journalId || create.isPending}>
+            {create.isPending ? "Reading OJS..." : "Collect authors"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function ImportsPage() {
   const limit = 20
   const [page, setPage] = useState(1)
+  const [ojsOpen, setOjsOpen] = useState(false)
   const { data, isLoading, isError, error } = useGetImports(page, limit)
   const imports = data?.data ?? []
   const pagination = data?.pagination
@@ -36,13 +103,20 @@ export default function ImportsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Imports" subtitle="Subscriber lists uploaded for invitation">
-        <Button asChild>
-          <Link href="/admin/notifications/imports/new">
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            New import
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOjsOpen(true)}>
+            <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+            Import authors from OJS
+          </Button>
+          <Button asChild>
+            <Link href="/admin/notifications/imports/new">
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              New import
+            </Link>
+          </Button>
+        </div>
       </PageHeader>
+      <OjsAuthorsDialog open={ojsOpen} onOpenChange={setOjsOpen} />
 
       <Card>
         <CardHeader>

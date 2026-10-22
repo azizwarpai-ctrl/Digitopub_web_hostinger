@@ -5,7 +5,9 @@ import { emailHash } from "@/src/lib/email-hash"
 
 import { CONSENT_VERSIONS, getImportMaxRows } from "./config"
 import { ensureNotificationTemplate, NOTIFICATION_TEMPLATE_KEYS } from "./templates"
-import { parseImportFile, toCandidates, type ColumnMap, type ParsedSheet } from "./import/parse"
+import { getOjsAuthorsForJournal } from "@/src/features/ojs/server/ojs-journal-authors"
+
+import { parseImportFile, toCandidates, type ColumnMap, type ImportCandidate, type ParsedSheet } from "./import/parse"
 import { buildDisciplineIndex, mapInterests, normalizeTerm, synonymsOf } from "./import/map-interests"
 import { computeTotals, stageCandidates, type ImportTotals } from "./import/stage"
 
@@ -70,7 +72,25 @@ export async function createImport(input: {
         if (idx !== undefined && idx >= width) throw new ImportStateError(`Column map "${key}" points past the last column.`)
     }
 
-    const candidates = toCandidates(sheet, columnMap)
+    return stageImport({
+        fileName: input.fileName,
+        fileType: sheet.fileType,
+        columnMap,
+        candidates: toCandidates(sheet, columnMap),
+        uploadedBy: input.uploadedBy,
+    })
+}
+
+/** Classifies candidates (invalid, duplicate, existing, suppressed), stores them as a `parsed` import. */
+async function stageImport(input: {
+    fileName: string
+    fileType: string
+    columnMap: ColumnMap
+    candidates: ImportCandidate[]
+    uploadedBy: bigint
+    journalId?: bigint
+}) {
+    const { candidates, columnMap } = input
     const [existing, index] = await Promise.all([
         existingStatuses(candidates.map((c) => c.email)),
         loadDisciplineIndex(),
@@ -80,11 +100,12 @@ export async function createImport(input: {
     const created = await prisma.subscriberImport.create({
         data: {
             file_name: input.fileName.slice(0, 255),
-            file_type: sheet.fileType,
+            file_type: input.fileType,
             uploaded_by: input.uploadedBy,
             status: "parsed",
             totals: totals as unknown as Prisma.InputJsonValue,
             column_map: columnMap as unknown as Prisma.InputJsonValue,
+            ...(input.journalId ? { journal_id: input.journalId } : {}),
         },
     })
     for (const part of chunks(rows)) {
@@ -179,8 +200,38 @@ export async function applyTermMappings(importId: bigint, mappings: Array<{ term
 
 /** A journal a list can be assigned to; throws when it does not exist or is inactive. */
 async function requireAssignableJournal(journalId: bigint) {
-    const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, status: true } })
+    const journal = await prisma.journal.findUnique({
+        where: { id: journalId },
+        select: { id: true, status: true, title: true, ojs_id: true },
+    })
     if (!journal || journal.status !== "active") throw new ImportStateError("Choose an active journal, or General.")
+    return journal
+}
+
+/** File type recorded for lists built from a journal's OJS authors (column is VARCHAR(10)). */
+export const OJS_AUTHORS_FILE_TYPE = "ojs"
+
+/**
+ * Stages the authors of one journal's OJS submissions as an import assigned
+ * to that journal. Reads OJS only; the usual review applies (invalid,
+ * duplicate, already subscribed, suppressed), and confirming creates
+ * pending people who follow the journal plus an invitation draft in its name.
+ */
+export async function createImportFromOjsAuthors(journalId: bigint, uploadedBy: bigint) {
+    const journal = await requireAssignableJournal(journalId)
+    const contextId = Number.parseInt(journal.ojs_id ?? "", 10)
+    if (!Number.isFinite(contextId)) throw new ImportStateError("This journal is not linked to OJS.")
+    const authors = await getOjsAuthorsForJournal(contextId, getImportMaxRows())
+    if (authors.length === 0) throw new ImportStateError("No authors with an email address were found for this journal in OJS.")
+    const candidates: ImportCandidate[] = authors.map((a, i) => ({ row_no: i + 1, email: a.email.toLowerCase(), name: a.name, raw_interests: null }))
+    return stageImport({
+        fileName: `OJS authors: ${journal.title}`,
+        fileType: OJS_AUTHORS_FILE_TYPE,
+        columnMap: { email: 0, name: 1 },
+        candidates,
+        uploadedBy,
+        journalId,
+    })
 }
 
 /**
