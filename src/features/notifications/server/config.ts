@@ -32,3 +32,11 @@ export function getAppBaseUrl(): string {
 
 /** Unconfirmed (pending) subscribers are purged after this many days (#199). */
 export const PENDING_SUBSCRIBER_RETENTION_DAYS = 90
+
+/**
+ * Kill switch (`NOTIFICATIONS_ENABLED`, default off). While off, detection,
+ * digest and send crons do nothing; sign-up and admin pages still work.
+ */
+export function isNotificationsEnabled(): boolean {
+    return process.env.NOTIFICATIONS_ENABLED === "true"
+}

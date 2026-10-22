@@ -19,7 +19,9 @@ Every endpoint:
 | Daily metrics aggregation | `POST /api/metrics/cron/daily` | `0 2 * * *` | Previous UTC day; `?day=YYYY-MM-DD` to re-run a specific day. Idempotent. |
 | Monthly metrics rollup | `POST /api/metrics/cron/monthly` | `0 3 1 * *` | Previous UTC month; `?month=YYYY-MM` override. Idempotent. |
 | User (ORCID) lifetime metrics | `POST /api/metrics/cron/user` | `0 4 * * *` | After daily aggregation. |
-| Event retention cleanup | `POST /api/metrics/cron/retention` | `0 5 * * 0` | ~18-month retention. 50 s soft deadline per run; 207 = more to delete next week (or run again). |
+| Event retention cleanup | `POST /api/metrics/cron/retention` | `0 5 * * 0` | ~18-month retention. 50 s soft deadline per run; 207 = more to delete next week (or run again). Also purges notification import staging (14 d) and never-confirmed alert subscribers (90 d). |
+| Publication detection | `POST /api/notifications/cron/detect` | `*/30 * * * *` | New OJS issues/articles → `publication_events` + **draft** issue campaigns (never sends). First run only stores the watermark. 207 = more than 200 candidates, continues next run. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
+| Article digests | `POST /api/notifications/cron/digests` | `0 7 * * *` | Daily digest draft every day; weekly digest draft on Mondays (UTC). Contiguous windows. Same kill switch. |
 
 ## Exact commands (hPanel cron / external scheduler)
 
@@ -38,6 +40,12 @@ curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/
 
 # weekly, Sunday 05:00 UTC
 curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/metrics/cron/retention
+
+# every 30 minutes (publication detection; drafts only)
+curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/detect
+
+# daily 07:00 UTC (daily digest; weekly digest on Mondays)
+curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/digests
 ```
 
 If hPanel cron cannot run `curl` with headers, use cron-job.org (supports custom headers);
@@ -54,6 +62,8 @@ bun run scripts/aggregate-daily-metrics.ts [--day=YYYY-MM-DD]
 bun run scripts/aggregate-monthly-metrics.ts [--month=YYYY-MM]
 bun run scripts/update-user-metrics.ts
 bun run scripts/retention-cleanup.ts
+bun run scripts/notifications-detect.ts
+bun run scripts/notifications-digests.ts
 ```
 
 ## Observability

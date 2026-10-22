@@ -1,11 +1,8 @@
 import { Hono } from "hono"
-import type { Context } from "hono"
 import { ojsQuery, isOjsConfigured } from "@/src/features/ojs/server/ojs-client"
 import { prisma } from "@/src/lib/db/config"
 import { metricsEventsRouter } from "@/src/server/routes/metrics-events"
-import { verifyCronSecret } from "@/src/lib/cron-auth"
-import { acquireJobLock } from "@/src/lib/cron-lock"
-import { withSyncRun } from "@/src/features/ojs/server/sync-runs"
+import { cronEndpoint } from "@/src/lib/cron-endpoint"
 import {
     aggregateDailyMetrics,
     aggregateMonthlyMetrics,
@@ -25,48 +22,12 @@ app.route("/events", metricsEventsRouter)
 // ─── Cron endpoints ──────────────────────────────────────────────────
 // The production host has no crontab (see docs/ops/discovery-2026-08.md),
 // so the metrics jobs are triggered over HTTP by hPanel cron / an external
-// scheduler. Same protection stack as /api/ojs/sync: Bearer CRON_SECRET
-// (timing-safe), a self-expiring DB lock (429 when held), and a SyncRun
-// ledger row per execution. Schedule: docs/ops/cron-schedule.md.
+// scheduler, wrapped by cronEndpoint() (src/lib/cron-endpoint.ts): Bearer
+// CRON_SECRET, a self-expiring DB lock, and a SyncRun ledger row.
 
-const CRON_LOCK_WINDOW_MS = 5 * 60 * 1000
 // Soft wall-clock budget below typical shared-hosting request timeouts; a
 // job that exceeds it reports partial (207) and resumes on the next tick.
 const CRON_SOFT_DEADLINE_MS = 50 * 1000
-
-function cronEndpoint(
-    jobName: string,
-    run: (c: Context) => Promise<{ partial: boolean; stats: Record<string, unknown> }>
-) {
-    return async (c: Context) => {
-        if (!verifyCronSecret(c.req.header("authorization"))) {
-            return c.json({ success: false, error: "Unauthorized" }, 401)
-        }
-        if (!(await acquireJobLock(`${jobName}_lock`, CRON_LOCK_WINDOW_MS))) {
-            return c.json(
-                { success: false, error: "Job already in progress or recently completed" },
-                429
-            )
-        }
-        try {
-            const outcome = await withSyncRun(jobName, "http", async () => {
-                const { partial, stats } = await run(c)
-                return {
-                    status: partial ? ("partial" as const) : ("success" as const),
-                    stats,
-                    result: { partial, stats },
-                }
-            })
-            return c.json(
-                { success: !outcome.partial, ...outcome.stats },
-                outcome.partial ? 207 : 200
-            )
-        } catch (error) {
-            console.error(`[${jobName}] cron run failed:`, error)
-            return c.json({ success: false, error: "Job failed" }, 500)
-        }
-    }
-}
 
 app.post("/cron/daily", cronEndpoint("metrics_daily_aggregation", async (c) => {
     const day = c.req.query("day")
