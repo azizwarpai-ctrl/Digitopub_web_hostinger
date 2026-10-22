@@ -5,6 +5,8 @@
 This runbook describes how to configure the sender mailbox, DNS records, and limits needed before
 publication-alert emails are sent. It applies to the notification send queue
 (`POST /api/notifications/cron/send`). Read it before setting `NOTIFICATIONS_ENABLED=true` in production.
+For the complete click-by-click procedure on Hostinger, without shell access, see
+[`notifications-go-live.md`](./notifications-go-live.md).
 
 ## Sender mailbox
 
@@ -57,7 +59,8 @@ After 2 to 4 weeks of clean aggregate reports, move to `p=quarantine`. Only move
 
 Before enabling sending, confirm all of the following:
 
-- Send a test message to a [mail-tester.com](https://www.mail-tester.com) address. Target a score
+- Send a test message to a [mail-tester.com](https://www.mail-tester.com) address with Admin, Notifications,
+  Settings, Go-live setup, **Deliverability test**. It uses the alerts mailbox and the real headers. Target a score
   of 9/10 or better.
 - Send a test message to a Gmail address, open the message, and choose "Show original".
   The results must show `SPF: PASS`, `DKIM: PASS`, and `DMARC: PASS`.
@@ -105,4 +108,4 @@ Complete every item before setting `NOTIFICATIONS_ENABLED=true` in production:
 - [ ] mail-tester.com score is 9/10 or better
 - [ ] Warm-up schedule is planned, and the first week's daily target is set
 - [ ] `NOTIFICATIONS_ENABLED=true` is set in the production environment
-- [ ] Cron jobs are added in hPanel: `*/30 * * * *` (detect), `0 7 * * *` (digests), and `*/5 * * * *` (send)
+- [ ] Cron jobs are added on cron-job.org or in hPanel: `*/30 * * * *` (detect), `0 7 * * *` (digests), and `*/5 * * * *` (send)

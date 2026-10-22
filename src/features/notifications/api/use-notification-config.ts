@@ -252,9 +252,68 @@ export function useSaveNotificationSettings() {
     onSuccess: () => {
       toast.success("Settings saved")
       queryClient.invalidateQueries({ queryKey: SETTINGS_KEY })
+      queryClient.invalidateQueries({ queryKey: READINESS_KEY })
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to save settings")
+    },
+  })
+}
+
+// ─── Go-live setup ────────────────────────────────────────────────────
+
+export interface ReadinessItem {
+  key: string
+  label: string
+  ok: boolean
+  detail: string
+}
+
+const READINESS_KEY = ["notification-readiness"]
+
+export function useNotificationReadiness() {
+  return useQuery({
+    queryKey: READINESS_KEY,
+    queryFn: async () => {
+      const res = await client.notifications.settings.readiness.$get()
+      const body = await parseRpcResponse<{ data: ReadinessItem[] }>(res, "Failed to load readiness")
+      return body.data
+    },
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useInstallNotificationDefaults() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await client.notifications.settings["install-defaults"].$post()
+      return parseRpcResponse<{
+        data: { disciplines: number; rules: number; templatesCreated: number; templatesKept: number }
+      }>(res, "Failed to install starter data")
+    },
+    onSuccess: ({ data }) => {
+      toast.success(`Starter data installed: ${data.disciplines} disciplines, ${data.templatesCreated} new templates`)
+      queryClient.invalidateQueries({ queryKey: READINESS_KEY })
+      invalidateTaxonomy(queryClient)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to install starter data")
+    },
+  })
+}
+
+export function useSendDeliverabilityTest() {
+  return useMutation({
+    mutationFn: async (to: string) => {
+      const res = await client.notifications.settings["deliverability-test"].$post({ json: { to } })
+      return parseRpcResponse<{ data: null }>(res, "Failed to send the test email")
+    },
+    onSuccess: () => {
+      toast.success("Test email sent through the alerts mailbox")
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to send the test email")
     },
   })
 }

@@ -61,16 +61,21 @@ function oneClickUrl(s: ComposeSubscriber): string {
     return `${getAppBaseUrl()}/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`
 }
 
-export function bulkHeaders(s: ComposeSubscriber, campaignId: bigint): Record<string, string> {
-    const entries = [`<${oneClickUrl(s)}>`]
+/** RFC 8058 one-click unsubscribe and bulk headers for an unsubscribe URL. */
+export function listUnsubscribeHeaders(unsubscribeUrl: string, campaignId: string): Record<string, string> {
+    const entries = [`<${unsubscribeUrl}>`]
     const mailto = process.env.NOTIFY_UNSUBSCRIBE_MAILTO
     if (mailto) entries.push(`<mailto:${mailto}?subject=unsubscribe>`)
     return {
         "List-Unsubscribe": entries.join(", "),
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "Precedence": "bulk",
-        "X-DigitoPub-Campaign": campaignId.toString(),
+        "X-DigitoPub-Campaign": campaignId,
     }
+}
+
+export function bulkHeaders(s: ComposeSubscriber, campaignId: bigint): Record<string, string> {
+    return listUnsubscribeHeaders(oneClickUrl(s), campaignId.toString())
 }
 
 const isoDate = (d: string | Date) => new Date(d).toISOString().slice(0, 10)
