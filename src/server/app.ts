@@ -18,6 +18,7 @@ import { authOrcidRouter } from "@/src/server/routes/auth-orcid"
 import { accountRouter } from "@/src/server/routes/account"
 import { adminAnalyticsRouter } from "@/src/features/admin-analytics/server"
 import { articleAudioRouter } from "@/src/features/article-audio/server"
+import { notificationsRouter } from "@/src/features/notifications/server"
 
 const apiApp = new Hono()
     .route("/journals", journalRouter)
@@ -41,6 +42,7 @@ const apiApp = new Hono()
     .route("/search", searchRouter)
     .route("/admin-analytics", adminAnalyticsRouter)
     .route("/article-audio", articleAudioRouter)
+    .route("/notifications", notificationsRouter)
 
 
 const app = new Hono().basePath("/api")
