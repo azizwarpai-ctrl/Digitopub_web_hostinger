@@ -28,6 +28,15 @@ function sanitize(html: string, options: Config): string {
 }
 
 /**
+ * Citation preview: only bare <i> emphasis survives. Tags are stripped first so the
+ * server render (no DOMPurify there) and the browser render give the same markup.
+ */
+export function sanitizeCitationHtml(html: string): string {
+  const stripped = html.replace(/<(?!\/?i>)[^>]*>/gi, "")
+  return sanitize(stripped, { ALLOWED_TAGS: ["i"], ALLOWED_ATTR: [] })
+}
+
+/**
  * Strict sanitizer for simple structured content (descriptions, author guidelines).
  */
 export function sanitizeContent(html: string | null | undefined): string {

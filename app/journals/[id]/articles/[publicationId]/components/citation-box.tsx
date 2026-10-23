@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import DOMPurify from "dompurify"
 import { Check, Copy, Download, Quote } from "lucide-react"
 import type { ArticleDetail } from "@/src/features/journals"
 import { recordCitationEvent } from "@/src/hooks/use-metric-events"
@@ -11,6 +10,7 @@ import {
   generateCitation,
   type CitationFormat,
 } from "@/src/features/journals/utils/citation-formatter"
+import { sanitizeCitationHtml } from "@/src/features/journals/utils/sanitize-html"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -49,10 +49,7 @@ export function CitationBox({ article }: CitationBoxProps) {
   // Sanitize at the trust boundary (the sink), even though the formatter
   // already HTML-escapes every dynamic field: the preview only ever needs
   // the <i> emphasis the formatter emits, so allow nothing else.
-  const citationHtmlSafe = useMemo(
-    () => DOMPurify.sanitize(citationHtml, { ALLOWED_TAGS: ["i"], ALLOWED_ATTR: [] }),
-    [citationHtml]
-  )
+  const citationHtmlSafe = useMemo(() => sanitizeCitationHtml(citationHtml), [citationHtml])
 
   const handleCopy = async () => {
     setCopyFailed(false)
