@@ -66,6 +66,14 @@ export interface NotificationSettings {
   weekly_digest_day: number
   consent_text_version: string
   email_style: "classic" | "modern" | "minimal"
+  /** Saved addresses that pre-fill every "Send test" box. */
+  test_recipients: string[]
+}
+
+/** Outcome of a test sent to one or several addresses. */
+export interface TestSendResult {
+  sent: string[]
+  failed: { to: string; error: string }[]
 }
 
 export interface NotificationSettingsView {
@@ -306,12 +314,12 @@ export function useInstallNotificationDefaults() {
 
 export function useSendDeliverabilityTest() {
   return useMutation({
-    mutationFn: async (to: string) => {
-      const res = await client.notifications.settings["deliverability-test"].$post({ json: { to } })
-      return parseRpcResponse<{ data: null }>(res, "Failed to send the test email")
+    mutationFn: async (recipients: string[]) => {
+      const res = await client.notifications.settings["deliverability-test"].$post({ json: { recipients } })
+      return parseRpcResponse<{ data: TestSendResult; message?: string }>(res, "Failed to send the test email")
     },
-    onSuccess: () => {
-      toast.success("Test email sent through the alerts mailbox")
+    onSuccess: (body) => {
+      toast.success(body.message ?? "Test email sent through the alerts mailbox")
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to send the test email")

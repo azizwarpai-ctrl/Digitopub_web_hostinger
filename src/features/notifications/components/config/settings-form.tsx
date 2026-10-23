@@ -17,6 +17,7 @@ import {
   type NotificationSettings,
   type NotificationSettingsView,
 } from "@/src/features/notifications/api/use-notification-config"
+import { MAX_TEST_RECIPIENTS, parseEmailList } from "@/src/lib/email/email-list"
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -25,6 +26,13 @@ function SettingsFields({ view }: { view: NotificationSettingsView }) {
   const [address, setAddress] = useState(view.settings.publisher_address)
   const [day, setDay] = useState(String(view.settings.weekly_digest_day))
   const [consent, setConsent] = useState(view.settings.consent_text_version)
+  const [testList, setTestList] = useState((view.settings.test_recipients ?? []).join("\n"))
+  const parsedTestList = parseEmailList(testList)
+  const testListError = parsedTestList.invalid.length
+    ? `Not valid: ${parsedTestList.invalid.join(", ")}`
+    : parsedTestList.valid.length > MAX_TEST_RECIPIENTS
+      ? `At most ${MAX_TEST_RECIPIENTS} addresses`
+      : null
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,6 +40,7 @@ function SettingsFields({ view }: { view: NotificationSettingsView }) {
       publisher_address: address.trim(),
       weekly_digest_day: Number.parseInt(day, 10),
       consent_text_version: consent.trim(),
+      test_recipients: parsedTestList.valid,
     }
     save.mutate(payload)
   }
@@ -84,7 +93,22 @@ function SettingsFields({ view }: { view: NotificationSettingsView }) {
               Change this when you change the sign-up consent wording.
             </p>
           </div>
-          <Button type="submit" disabled={save.isPending || !address.trim() || !consent.trim()}>
+          <div className="space-y-1.5">
+            <Label htmlFor="test-recipients-list">Test recipients</Label>
+            <Textarea
+              id="test-recipients-list"
+              rows={4}
+              value={testList}
+              placeholder={"manager@digitopub.com\neditor@example.org"}
+              onChange={(e) => setTestList(e.target.value)}
+              aria-describedby="test-recipients-list-help"
+              aria-invalid={!!testListError}
+            />
+            <p id="test-recipients-list-help" className={testListError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+              {testListError ?? `Up to ${MAX_TEST_RECIPIENTS} addresses, one per line. They pre-fill every "Send test" box.`}
+            </p>
+          </div>
+          <Button type="submit" disabled={save.isPending || !address.trim() || !consent.trim() || !!testListError}>
             {save.isPending ? "Saving..." : "Save settings"}
           </Button>
         </form>

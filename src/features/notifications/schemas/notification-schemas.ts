@@ -8,6 +8,7 @@ import {
     SUPPRESSED_STATUSES,
 } from "../constants"
 import { EMAIL_STYLE_KEYS } from "../server/email-styles"
+import { MAX_TEST_RECIPIENTS, testRecipientsSchema } from "@/src/lib/email/email-list"
 
 const idString = z.string().regex(/^\d+$/, "Invalid ID")
 
@@ -161,7 +162,7 @@ export const campaignApproveSchema = z.object({
     scheduled_at: z.iso.datetime({ offset: true }).optional(),
 })
 
-export const campaignTestSchema = z.object({ to: z.email().max(255).optional() })
+export const campaignTestSchema = z.object({ to: z.email().max(255).optional(), recipients: testRecipientsSchema.optional() })
 
 export const ruleUpsertSchema = z.object({
     scope: z.enum(["global", "journal", "discipline"]),
@@ -190,7 +191,10 @@ export const disciplineUpdateSchema = z.object({
 
 export const disciplineIdsSchema = z.object({ discipline_ids: z.array(idString).max(200) })
 
-export const deliverabilityTestSchema = z.object({ to: z.email().max(255) })
+/** `to` (one address, as before) and/or `recipients` (up to MAX_TEST_RECIPIENTS). */
+export const deliverabilityTestSchema = z
+    .object({ to: z.email().max(255).optional(), recipients: testRecipientsSchema.optional() })
+    .refine((v) => !!v.to || !!v.recipients?.length, { message: "Enter at least one email address", path: ["recipients"] })
 
 export const emailStyleParamSchema = z.object({ key: z.enum(EMAIL_STYLE_KEYS) })
 /** Keep in step with NOTIFICATION_TEMPLATE_KEYS (server/templates.ts); a unit test checks it. */
@@ -211,4 +215,6 @@ export const settingsSchema = z.object({
     publisher_address: z.string().trim().max(500).optional(),
     weekly_digest_day: z.number().int().min(0).max(6).optional(),
     consent_text_version: z.string().trim().min(1).max(32).optional(),
+    /** Saved addresses that pre-fill every "Send test" box. */
+    test_recipients: z.array(z.email().max(255)).max(MAX_TEST_RECIPIENTS).optional(),
 })

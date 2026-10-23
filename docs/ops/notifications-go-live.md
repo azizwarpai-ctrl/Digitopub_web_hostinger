@@ -164,7 +164,8 @@ lookup tool such as <https://mxtoolbox.com/SuperTool.aspx> (SPF, DKIM and DMARC 
    Paste the address and click **Send test**.
    - The test is a sample new-issue alert sent through the **sending mailbox** (`noreply@`), with the same
      unsubscribe headers as real alerts. It works while sending is still disabled.
-   - It is limited to 10 tests per hour.
+   - You can add several addresses at once (for example mail-tester, a Gmail and an Outlook inbox). Test emails
+     are limited to 50 per hour in total.
 3. Back on mail-tester.com, click **Then check your score**.
 4. Send one more test to a Gmail address. In Gmail, open the message, then the three-dot menu,
    then **Show original**. It must show `SPF: PASS`, `DKIM: PASS` and `DMARC: PASS`.
@@ -223,6 +224,10 @@ These features need no setup beyond the migrations, which the Hostinger build ap
 - **Editing content.** On any draft, **Edit content** changes the HTML and plain text. Then:
   **Save for this message only**, **Save as new template…**, or **Overwrite template…** (changes every future
   email that uses it). The unsubscribe link, manage link and postal address cannot be removed.
+- **Testing with several addresses.** Every **Send test** box (campaign drafts, the template editor and the
+  deliverability test) accepts up to 10 addresses, separated by commas or new lines. Save your usual review group
+  under **Settings → Test recipients** to pre-fill the boxes. All test emails share a budget of 50 per hour,
+  because they use the same mailbox as OTP codes and real alerts.
 - After deploying this, click **Install starter data** once more (Settings → Go-live setup) to add the new
   **notify_custom_message** letter template. The checklist shows "7 of 8 installed" until then. Your edited
   templates are kept.

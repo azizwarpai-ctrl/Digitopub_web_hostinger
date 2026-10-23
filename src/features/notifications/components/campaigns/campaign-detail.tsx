@@ -39,6 +39,7 @@ import {
 } from "../../api/use-campaigns"
 import { CampaignStatusBadge, campaignTypeLabel } from "./campaign-status"
 import { ContentEditorCard } from "./content-editor-card"
+import { TestRecipientsField, useTestRecipients } from "../test-recipients-field"
 
 const PROGRESS_STATUSES: CampaignStatus[] = ["scheduled", "queued", "sending", "paused", "sent"]
 /** Only campaigns that can still change on their own are polled. */
@@ -322,7 +323,7 @@ function ActionsCard({ detail }: { detail: CampaignDetail }) {
   const resume = useResumeCampaign()
   const cancel = useCancelCampaign()
 
-  const [testTo, setTestTo] = useState("")
+  const { recipients: testRecipients, setRecipients: setTestRecipients, saved: savedTestRecipients } = useTestRecipients()
   const [approveOpen, setApproveOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -373,23 +374,20 @@ function ActionsCard({ detail }: { detail: CampaignDetail }) {
       </CardHeader>
       <CardContent className="space-y-5">
         {canEdit && (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-64 flex-1 space-y-1.5">
-              <Label htmlFor="test-to">Test recipient (optional)</Label>
-              <Input
-                id="test-to"
-                type="email"
-                placeholder="Defaults to your own address"
-                value={testTo}
-                onChange={(e) => setTestTo(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => test.mutate({ id, to: testTo.trim() || undefined })}
-            >
-              {test.isPending ? "Sending..." : "Send test to me"}
+          <div className="space-y-3">
+            <TestRecipientsField
+              id="test-recipients"
+              recipients={testRecipients}
+              onChange={setTestRecipients}
+              saved={savedTestRecipients}
+              hint="Leave empty to send it to yourself."
+            />
+            <Button variant="outline" disabled={busy} onClick={() => test.mutate({ id, recipients: testRecipients })}>
+              {test.isPending
+                ? "Sending..."
+                : testRecipients.length
+                  ? `Send test (${testRecipients.length})`
+                  : "Send test to me"}
             </Button>
           </div>
         )}

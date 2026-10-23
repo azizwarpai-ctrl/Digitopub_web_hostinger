@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { testRecipientsSchema } from "@/src/lib/email/email-list"
+
 /** {{{name}}} (raw HTML) is only allowed for server-built notification blocks. */
 const RAW_ALLOWED = ["toc_html", "articles_html", "editor_note_html", "message_html"]
 const rawVariablesOk = (html: string | undefined | null) =>
@@ -45,10 +47,14 @@ export const emailTemplatePreviewSchema = z.object({
   variables: z.record(z.string(), z.string()).optional().default({}),
 })
 
-export const emailTemplateSendTestSchema = z.object({
-  to: z.email("Invalid email address"),
-  variables: z.record(z.string(), z.string()).optional().default({}),
-})
+export const emailTemplateSendTestSchema = z
+  .object({
+    to: z.email("Invalid email address").optional(),
+    /** Up to MAX_TEST_RECIPIENTS addresses; merged with `to`. */
+    recipients: testRecipientsSchema.optional(),
+    variables: z.record(z.string(), z.string()).optional().default({}),
+  })
+  .refine((v) => !!v.to || !!v.recipients?.length, { message: "Enter at least one email address", path: ["recipients"] })
 
 export type EmailTemplateCreate = z.infer<typeof emailTemplateCreateSchema>
 export type EmailTemplateUpdate = z.infer<typeof emailTemplateUpdateSchema>

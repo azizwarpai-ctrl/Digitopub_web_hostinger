@@ -56,12 +56,13 @@ const prismaMock: any = {
     },
     systemSetting: {
         findUnique: vi.fn(async () => (db.settings ? { setting_value: db.settings } : null)),
+        upsert: vi.fn(async ({ update }: any) => { db.settings = update.setting_value }),
     },
 }
 vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
 
 const { notificationsRouter } = await import("@/src/features/notifications/server")
-const { getReadiness, takeDeliverabilityTestSlot } = await import("@/src/features/notifications/server/go-live-service")
+const { getReadiness } = await import("@/src/features/notifications/server/go-live-service")
 
 const app = () => new Hono().route("/notifications", notificationsRouter)
 const post = (path: string, json?: unknown) => app().request(`/notifications/settings${path}`, {
@@ -142,11 +143,41 @@ describe("deliverability test", () => {
         expect(sent).toHaveLength(0)
     })
 
-    it("allows at most 10 tests per hour", () => {
-        const t0 = Date.UTC(2030, 0, 1)
-        for (let i = 0; i < 10; i++) expect(takeDeliverabilityTestSlot(t0 + i)).toBe(true)
-        expect(takeDeliverabilityTestSlot(t0 + 11)).toBe(false)
-        expect(takeDeliverabilityTestSlot(t0 + 61 * 60 * 1000)).toBe(true)
+    it("sends the same test to a list of addresses, and still accepts a single to", async () => {
+        const res = await post("/deliverability-test", {
+            to: "test-abc@srv1.mail-tester.com",
+            recipients: ["Me@Gmail.com", "test-abc@srv1.mail-tester.com", "x@outlook.com"],
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.data.sent).toEqual(["test-abc@srv1.mail-tester.com", "me@gmail.com", "x@outlook.com"])
+        expect(body.message).toBe("Test sent to 3 of 3 addresses")
+        expect(sent.map((m) => m.to)).toEqual(body.data.sent)
+        expect(new Set(sent.map((m) => m.subject)).size).toBe(1)
+    })
+
+    it("needs at least one address and at most 10", async () => {
+        expect((await post("/deliverability-test", {})).status).toBe(400)
+        const eleven = Array.from({ length: 11 }, (_, i) => `t${i}@example.org`)
+        expect((await post("/deliverability-test", { recipients: eleven })).status).toBe(400)
+        expect((await post("/deliverability-test", { to: "t10@example.org", recipients: eleven.slice(0, 10) })).status).toBe(400)
+        expect(sent).toHaveLength(0)
+    })
+})
+
+describe("saved test recipients", () => {
+    const put = (json: unknown) => app().request("/notifications/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(json),
+    })
+
+    it("stores up to 10 valid addresses next to the other settings", async () => {
+        db.settings = { publisher_address: "DigitoPub, 5 Real Road, Tripoli" }
+        expect((await put({ test_recipients: ["chief@x.org", "editor@x.org"] })).status).toBe(200)
+        expect(db.settings).toMatchObject({ publisher_address: "DigitoPub, 5 Real Road, Tripoli", test_recipients: ["chief@x.org", "editor@x.org"] })
+        expect((await put({ test_recipients: ["nope"] })).status).toBe(400)
+        expect((await put({ test_recipients: Array.from({ length: 11 }, (_, i) => `t${i}@x.org`) })).status).toBe(400)
     })
 })
 

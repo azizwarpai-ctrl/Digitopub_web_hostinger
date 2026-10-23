@@ -11,6 +11,7 @@ import { ResetTemplateCard } from "@/src/features/email-templates/components/res
 import { useEditorInsertion } from "@/src/features/email-templates/components/use-editor-insertion"
 import { TemplateActionsCard } from "@/src/features/email-templates/components/template-actions-card"
 import { SendTestEmailCard } from "@/src/features/email-templates/components/send-test-email-card"
+import { useTestRecipients } from "@/src/features/notifications/components/test-recipients-field"
 import { useUpdateEmailTemplate } from "@/src/features/email-templates/api/use-update-email-template"
 import { useSendTestEmail } from "@/src/features/email-templates/api/use-send-test-email"
 import { useGetSampleVariables } from "@/src/features/email-templates/api/use-get-sample-variables"
@@ -53,7 +54,7 @@ export function EditTemplateForm({ template }: Props) {
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [previewSubject, setPreviewSubject] = useState<string | null>(null)
-  const [testEmail, setTestEmail] = useState("")
+  const { recipients: testRecipients, setRecipients: setTestRecipients, saved: savedTestRecipients } = useTestRecipients()
 
   const { mutate: updateTemplate, isPending: saving } = useUpdateEmailTemplate()
   const { mutate: sendTestEmail, isPending: sendingTest } = useSendTestEmail()
@@ -150,8 +151,8 @@ export function EditTemplateForm({ template }: Props) {
   }
 
   const handleSendTest = () => {
-    if (!testEmail) {
-      toast.error("Please enter a test email address")
+    if (testRecipients.length === 0) {
+      toast.error("Please enter at least one test email address")
       return
     }
 
@@ -163,7 +164,7 @@ export function EditTemplateForm({ template }: Props) {
 
     sendTestEmail({
       param: { id: String(template.id) },
-      json: { to: testEmail, variables: sampleVars },
+      json: { recipients: testRecipients, variables: sampleVars },
     })
   }
 
@@ -205,8 +206,9 @@ export function EditTemplateForm({ template }: Props) {
             />
             {canReset && <ResetTemplateCard isResetting={resetting} onConfirm={handleReset} />}
             <SendTestEmailCard 
-              testEmail={testEmail}
-              setTestEmail={setTestEmail}
+              recipients={testRecipients}
+              setRecipients={setTestRecipients}
+              savedRecipients={savedTestRecipients}
               sendingTest={sendingTest}
               handleSendTest={handleSendTest}
             />

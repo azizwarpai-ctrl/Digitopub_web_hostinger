@@ -10,7 +10,6 @@ import {
     getNotificationTransport,
     isNotificationSmtpConfigured,
     notificationFromAddress,
-    type SendOutcome,
 } from "@/src/lib/email/notification-transport"
 
 import { getActiveEmailStyle, getSettings } from "./admin-config-service"
@@ -20,6 +19,7 @@ import { isNotificationsEnabled } from "./config"
 import { RAW_BLOCK_VARIABLES } from "./render-blocks"
 import { sampleVariables } from "./sample-data"
 import { seedNotificationDefaults } from "./seed"
+import { sendToEach, type TestSendResult } from "./test-send-budget"
 import { NOTIFICATION_TEMPLATE_KEYS, getDefaultTemplate, seedNotificationTemplates } from "./templates"
 
 export async function installDefaults() {
@@ -35,8 +35,8 @@ export async function installDefaults() {
 
 const TEST_TEMPLATE = NOTIFICATION_TEMPLATE_KEYS.newIssue
 
-/** Sends a sample new-issue alert to `to` through the alerts transport, with the real bulk headers. */
-export async function sendDeliverabilityTest(to: string): Promise<SendOutcome> {
+/** Sends a sample new-issue alert to each address through the alerts transport, with the real bulk headers. */
+export async function sendDeliverabilityTest(recipients: readonly string[]): Promise<TestSendResult> {
     const stored = await prisma.emailTemplate.findUnique({
         where: { name: TEST_TEMPLATE },
         select: { subject: true, html_content: true, text_content: true },
@@ -47,26 +47,14 @@ export async function sendDeliverabilityTest(to: string): Promise<SendOutcome> {
     const vars = sampleVariables(TEST_TEMPLATE, style)
     if (settings.publisher_address) vars.publisher_address = settings.publisher_address
     vars.preheader = "Deliverability test of the publication alert format"
-    return getNotificationTransport().send({
-        to,
+    const message = {
         subject: renderTemplate(t.subject, vars).replace(/[\r\n]+/g, " ").trim(),
         html: renderHtmlTemplate(t.html_content, vars, RAW_BLOCK_VARIABLES),
         text: renderTemplate(t.text_content ?? "", vars),
         headers: listUnsubscribeHeaders(vars.unsubscribe_url, "deliverability-test"),
-    })
-}
-
-// A handful of tests is enough to read a mail-tester score; more would
-// only spend the hosting plan's sending budget.
-const TEST_LIMIT_PER_HOUR = 10
-const testTimes: number[] = []
-
-/** True and recorded when another deliverability test may be sent this hour. */
-export function takeDeliverabilityTestSlot(now = Date.now()): boolean {
-    while (testTimes.length && now - testTimes[0] > 60 * 60 * 1000) testTimes.shift()
-    if (testTimes.length >= TEST_LIMIT_PER_HOUR) return false
-    testTimes.push(now)
-    return true
+    }
+    const transport = getNotificationTransport()
+    return sendToEach(recipients, (to) => transport.send({ ...message, to }))
 }
 
 export interface ReadinessItem {

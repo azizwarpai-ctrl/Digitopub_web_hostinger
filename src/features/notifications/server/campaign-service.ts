@@ -16,6 +16,7 @@ import { loadActiveAudience, loadRules } from "./audience"
 import { composeMessage, loadComposeContext, type ComposeSubscriber } from "./compose"
 import { resolveDigest, resolveRecipients, type AudienceSubscriber } from "./resolve-recipients"
 import { automaticSenderName } from "./sender-name"
+import { sendToEach, type TestSendResult } from "./test-send-budget"
 import { assertContentOk } from "./content-guard"
 import { customAudienceIds, templateUsage } from "./custom-campaign-service"
 
@@ -176,15 +177,24 @@ function sampleRecipient(email: string, name: string, audienceFor: NotificationC
     }
 }
 
-async function composeSample(c: NotificationCampaign, to: string, name: string) {
+/** One sample message per address, from a single compose context. */
+async function composeSamples(c: NotificationCampaign, recipients: readonly string[], name: string) {
     const ctx = await loadComposeContext(c, [])
-    const sample = sampleRecipient(to, name, c)
-    if (c.type === "digest_daily" || c.type === "digest_weekly") {
-        // Follow every journal in the digest so the sample shows all articles.
-        sample.journal_ids = [...ctx.events.values()].map((e) => (e.snapshot as unknown as ArticleSnapshot).journal_id)
-            .filter((x): x is string => !!x).map(BigInt)
+    // Follow every journal in a digest so the sample shows all articles.
+    const digestJournals = c.type === "digest_daily" || c.type === "digest_weekly"
+        ? [...ctx.events.values()].map((e) => (e.snapshot as unknown as ArticleSnapshot).journal_id).filter((x): x is string => !!x).map(BigInt)
+        : []
+    const messages = []
+    for (const to of recipients) {
+        const sample = sampleRecipient(to, name, c)
+        sample.journal_ids = digestJournals
+        messages.push(await composeMessage(ctx, sample))
     }
-    return composeMessage(ctx, sample)
+    return messages
+}
+
+async function composeSample(c: NotificationCampaign, to: string, name: string) {
+    return (await composeSamples(c, [to], name))[0]
 }
 
 export async function previewCampaign(id: bigint) {
@@ -194,12 +204,17 @@ export async function previewCampaign(id: bigint) {
     return m ? { subject: m.subject, html: m.html, text: m.text } : { subject: "", html: "<p>No content: every item was removed.</p>", text: "" }
 }
 
-export async function sendCampaignTest(id: bigint, to: string, name: string) {
+/** Sends the draft, exactly as subscribers will get it but with a [TEST] subject, to each address. */
+export async function sendCampaignTest(id: bigint, recipients: readonly string[], name: string): Promise<TestSendResult | null> {
     const c = await prisma.notificationCampaign.findUnique({ where: { id } })
     if (!c) return null
-    const m = await composeSample(c, to, name)
-    if (!m) throw new CampaignStateError("Nothing to send: every item was removed from this draft.")
-    return getNotificationTransport().send({ ...m, subject: `[TEST] ${m.subject}` })
+    const messages = await composeSamples(c, recipients, name)
+    if (messages.some((m) => !m)) throw new CampaignStateError("Nothing to send: every item was removed from this draft.")
+    const transport = getNotificationTransport()
+    return sendToEach(recipients, (to) => {
+        const m = messages[recipients.indexOf(to)]!
+        return transport.send({ ...m, subject: `[TEST] ${m.subject}` })
+    })
 }
 
 // ─── Edit & approve ───────────────────────────────────────────────────

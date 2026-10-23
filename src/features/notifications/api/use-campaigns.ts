@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { client } from "@/src/lib/rpc"
 import { parseRpcResponse } from "@/src/lib/rpc-utils"
 import type { Pagination } from "./use-get-subscribers"
+import type { TestSendResult } from "./use-notification-config"
 
 export type CampaignType = "issue" | "digest_weekly" | "digest_daily" | "invitation" | "custom"
 export type CampaignStatus =
@@ -273,12 +274,13 @@ export function useOverwriteCampaignTemplate() {
 
 export function useSendCampaignTest() {
   return useMutation({
-    mutationFn: async ({ id, to }: { id: string; to?: string }) => {
+    /** No recipients: the test goes to the signed-in admin. */
+    mutationFn: async ({ id, recipients }: { id: string; recipients?: string[] }) => {
       const res = await client.notifications.campaigns[":id"].test.$post({
         param: { id },
-        json: to ? { to } : {},
+        json: recipients?.length ? { recipients } : {},
       })
-      return parseRpcResponse<{ success: boolean; message?: string }>(res, "Failed to send test email")
+      return parseRpcResponse<{ success: boolean; message?: string; data?: TestSendResult }>(res, "Failed to send test email")
     },
     onSuccess: (d) => toast.success(d.message || "Test email sent"),
     onError: (error: Error) => toast.error(error.message || "Failed to send test email"),

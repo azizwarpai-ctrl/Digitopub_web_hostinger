@@ -11,6 +11,8 @@ import { sampleVariables } from "@/src/features/notifications/server/sample-data
 import { getDefaultTemplate } from "@/src/features/notifications/server/templates"
 import { getActiveEmailStyle } from "@/src/features/notifications/server/admin-config-service"
 import { sendEmail, getEmailServiceStatus } from "@/src/lib/email/service"
+import { MAX_TEST_RECIPIENTS, collectRecipients } from "@/src/lib/email/email-list"
+import { TEST_BUDGET_MESSAGE, describeTestSend, sendToEach, takeTestSendBudget } from "@/src/features/notifications/server/test-send-budget"
 import {
   emailTemplateCreateSchema,
   emailTemplateUpdateSchema,
@@ -376,7 +378,12 @@ app.post(
   async (c) => {
     try {
       const { id } = c.req.valid("param")
-      const { to, variables } = c.req.valid("json") as { to: string; variables: Record<string, string> }
+      const body = c.req.valid("json")
+      const variables = body.variables as Record<string, string>
+      const recipients = collectRecipients(body)
+      if (recipients.length > MAX_TEST_RECIPIENTS) {
+        return c.json({ success: false, error: `At most ${MAX_TEST_RECIPIENTS} test addresses` }, 400)
+      }
 
       const template = await prisma.emailTemplate.findUnique({
         where: { id: BigInt(id) },
@@ -410,39 +417,31 @@ app.post(
         ? renderTemplate(template.text_content, variables)
         : undefined
 
-      // Log attempt
-      const log = await prisma.emailLog.create({
-        data: {
-          template_id: template.id,
-          to_email: to,
-          subject: renderedSubject,
-          status: "pending",
-        },
-      })
-
-      // Send
-      const result = await sendEmail({
-        to,
-        subject: renderedSubject,
-        html: renderedHtml,
-        text: renderedText,
-      })
-
-      // Update log
-      await prisma.emailLog.update({
-        where: { id: log.id },
-        data: {
-          status: result.success ? "sent" : "failed",
-          error_message: result.error || null,
-          sent_at: result.success ? new Date() : null,
-        },
-      })
-
-      if (result.success) {
-        return c.json({ success: true, message: `Test email sent to ${to}` }, 200)
-      } else {
-        return c.json({ success: false, error: result.error || "Failed to send test email" }, 500)
+      if (!takeTestSendBudget(recipients.length)) {
+        return c.json({ success: false, error: TEST_BUDGET_MESSAGE }, 429)
       }
+
+      // One logged send per address; a failure does not stop the others.
+      const result = await sendToEach(recipients, async (to) => {
+        const log = await prisma.emailLog.create({
+          data: { template_id: template.id, to_email: to, subject: renderedSubject, status: "pending" },
+        })
+        const sent = await sendEmail({ to, subject: renderedSubject, html: renderedHtml, text: renderedText })
+        await prisma.emailLog.update({
+          where: { id: log.id },
+          data: {
+            status: sent.success ? "sent" : "failed",
+            error_message: sent.error || null,
+            sent_at: sent.success ? new Date() : null,
+          },
+        })
+        return sent.success ? { ok: true as const } : { ok: false as const, error: sent.error || "Failed to send test email" }
+      })
+
+      if (result.sent.length === 0) {
+        return c.json({ success: false, error: describeTestSend(result), data: result }, 500)
+      }
+      return c.json({ success: true, data: result, message: describeTestSend(result) }, 200)
     } catch (error) {
       console.error("Error sending test email:", error)
       return c.json({ success: false, error: "Failed to send test email" }, 500)
