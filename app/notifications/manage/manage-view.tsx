@@ -19,6 +19,7 @@ import {
 import { DisciplineChecklist } from "@/src/features/notifications/components/get-alerts-dialog"
 import {
     NotificationApiError,
+    isTestLinkResult,
     usePreferencesLookup,
     useSavePreferences,
     useUnsubscribe,
@@ -266,6 +267,19 @@ export function ManageView() {
                         ? "This preferences link is not valid. Please use the link in your most recent email."
                         : "Something went wrong. Please try again."}
                 </p>
+            </Shell>
+        )
+    }
+    if (isTestLinkResult(query.data)) {
+        return (
+            <Shell>
+                <div role="status" className="rounded-xl border border-border/60 bg-card p-5 space-y-2">
+                    <p className="text-sm font-medium">This link came from a test email.</p>
+                    <p className="text-sm text-muted-foreground">
+                        In a real email, this page shows the subscriber&apos;s alert preferences. Preference
+                        changes are not saved from a test email.
+                    </p>
+                </div>
             </Shell>
         )
     }

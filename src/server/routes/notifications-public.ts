@@ -27,6 +27,7 @@ import {
     confirmSubscription,
     deliverEmail,
     getPreferences,
+    isTestPreferencesLink,
     getPublicOptions,
     requestSubscription,
     unsubscribe,
@@ -133,6 +134,7 @@ const app = new Hono()
         const outcome = await confirmSubscription(c.req.valid("json").token)
         if (outcome.status === "invalid") return c.json({ success: false, error: "INVALID_LINK" }, 400)
         if (outcome.status === "expired") return c.json({ success: false, error: "EXPIRED_LINK" }, 410)
+        if (outcome.status === "test") return c.json({ success: true, data: { status: "test" as const } })
         if (outcome.status === "confirmed") sendLater(outcome.welcome)
         return c.json({ success: true, data: { status: outcome.status, manage_url: outcome.manageUrl } })
     })
@@ -141,7 +143,9 @@ const app = new Hono()
         const rate = tokenRate(c)
         if (!rate.allowed) return tooMany(c, rate)
 
-        const prefs = await getPreferences(c.req.valid("json").token)
+        const { token } = c.req.valid("json")
+        if (isTestPreferencesLink(token)) return c.json({ success: true, data: { test: true as const } })
+        const prefs = await getPreferences(token)
         if (!prefs) return c.json({ success: false, error: "INVALID_LINK" }, 400)
         return c.json({ success: true, data: serializeRecord(prefs) })
     })
@@ -153,6 +157,7 @@ const app = new Hono()
         const { token, ...input } = c.req.valid("json")
         const outcome = await updatePreferences(token, input)
         if (outcome.status === "invalid") return c.json({ success: false, error: "INVALID_LINK" }, 400)
+        if (outcome.status === "test") return c.json({ success: true, message: "Test link: nothing was saved." })
         if (outcome.status === "suppressed") {
             return c.json({ success: false, error: "This address can no longer receive alerts." }, 409)
         }
@@ -171,8 +176,10 @@ const app = new Hono()
         if (!rate.allowed) return tooMany(c, rate)
 
         const token = await readUnsubscribeToken(c)
-        if (!token || (await unsubscribe(token)) === "invalid") {
-            return c.json({ success: false, error: "INVALID_LINK" }, 400)
+        const result = token ? await unsubscribe(token) : "invalid"
+        if (result === "invalid") return c.json({ success: false, error: "INVALID_LINK" }, 400)
+        if (result === "test") {
+            return c.json({ success: true, data: { status: "test" as const }, message: "Test link: nothing was changed." })
         }
         return c.json({ success: true, message: "You have been unsubscribed." })
     })

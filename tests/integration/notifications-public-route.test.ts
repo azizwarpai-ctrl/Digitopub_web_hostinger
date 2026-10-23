@@ -321,3 +321,61 @@ describe("re-requesting a confirmation link", () => {
         expect(sent[1].variables.selected_journals).toBe("Journal of Orthodontic Research")
     })
 })
+
+describe("links from admin test emails (subscriber 0)", () => {
+    const sample = (purpose: "confirm" | "manage" | "unsub") => signNotifyToken({ purpose, subscriberId: 0n, version: 0 })
+    const writes = () =>
+        [
+            prismaMock.notificationSubscriber.update,
+            prismaMock.notificationSubscriber.updateMany,
+            prismaMock.notificationSubscriber.create,
+            prismaMock.$transaction,
+        ].reduce((n, fn) => n + fn.mock.calls.length, 0)
+
+    beforeEach(() => vi.clearAllMocks())
+
+    it("explains instead of failing, and changes nothing", async () => {
+        const confirm = await post("/confirm", { token: sample("confirm") })
+        expect(confirm.status).toBe(200)
+        expect((await confirm.json()).data).toEqual({ status: "test" })
+
+        const lookup = await post("/preferences/lookup", { token: sample("manage") })
+        expect(lookup.status).toBe(200)
+        expect((await lookup.json()).data).toEqual({ test: true })
+
+        const save = await post("/preferences", {
+            token: sample("manage"), journal_ids: [], discipline_ids: [], article_frequency: "weekly", issue_alerts: true,
+        })
+        expect(save.status).toBe(200)
+
+        for (const token of [sample("unsub"), sample("manage")]) {
+            const unsub = await post("/unsubscribe", { token })
+            expect(unsub.status).toBe(200)
+            expect((await unsub.json()).data).toEqual({ status: "test" })
+        }
+        // One-click (RFC 8058): token in the query, form body.
+        const oneClick = await app.request(`http://test/notifications/unsubscribe?token=${encodeURIComponent(sample("unsub"))}`, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": "10.9.9.9" },
+            body: "List-Unsubscribe=One-Click",
+        })
+        expect(oneClick.status).toBe(200)
+
+        await __flushNotificationEmailsForTests()
+        expect(writes()).toBe(0)
+        expect(prismaMock.notificationSubscriber.findUnique).not.toHaveBeenCalled()
+        expect(sent).toEqual([])
+    })
+
+    it("still rejects a forged subscriber-0 link", async () => {
+        const forged = sample("confirm").replace(/.$/, (c) => (c === "A" ? "B" : "A"))
+        expect((await post("/confirm", { token: forged })).status).toBe(400)
+    })
+
+    it("does not affect real confirm links", async () => {
+        await subscribe("reader@example.org")
+        const confirm = await post("/confirm", { token: tokenFrom(sent[0].variables.confirm_url) })
+        expect((await confirm.json()).data.status).toBe("confirmed")
+        expect(db.subscribers[0].status).toBe("active")
+    })
+})

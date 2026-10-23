@@ -112,6 +112,16 @@ export function verifyNotifyToken(
     }
 }
 
+/**
+ * True for a correctly signed link made for subscriber 0, the stand-in recipient of
+ * admin previews and test sends. No real subscriber has id 0, so such a link never
+ * changes anything; pages explain that it came from a test email.
+ */
+export function isSampleNotifyToken(token: string | null | undefined, purposes: readonly NotifyTokenPurpose[]): boolean {
+    // Expiry is ignored: an old test email is still a test email.
+    return purposes.some((p) => verifyNotifyToken(token, p, 0)?.subscriberId === BigInt(0))
+}
+
 /** sha256 hex, used to store the single-use confirm token. */
 export function hashNotifyToken(token: string): string {
     return createHash("sha256").update(token).digest("hex")
