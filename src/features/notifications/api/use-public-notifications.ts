@@ -36,6 +36,15 @@ export interface PreferencesLookup {
     options: AlertOptions
 }
 
+/** Returned for a link from an admin test email: the page explains it and changes nothing. */
+export interface TestLinkResult {
+    test: true
+}
+
+export function isTestLinkResult(value: unknown): value is TestLinkResult {
+    return typeof value === "object" && value !== null && (value as { test?: unknown }).test === true
+}
+
 export interface AccountSubscriberSummary {
     status: SubscriberStatus
     article_frequency: ArticleFrequency
@@ -116,7 +125,9 @@ export function useConfirmSubscription() {
     return useMutation({
         mutationFn: async (token: string) =>
             (
-                await request<{ status: "confirmed" | "already_active"; manage_url: string }>(
+                await request<
+                    { status: "confirmed" | "already_active"; manage_url: string } | { status: "test" }
+                >(
                     "/api/notifications/confirm",
                     { method: "POST", body: { token } },
                 )
@@ -125,11 +136,11 @@ export function useConfirmSubscription() {
 }
 
 export function usePreferencesLookup(token: string | null) {
-    return useQuery<PreferencesLookup>({
+    return useQuery<PreferencesLookup | TestLinkResult>({
         queryKey: ["notification-preferences", token],
         queryFn: async () =>
             (
-                await request<PreferencesLookup>("/api/notifications/preferences/lookup", {
+                await request<PreferencesLookup | TestLinkResult>("/api/notifications/preferences/lookup", {
                     method: "POST",
                     body: { token },
                 })
@@ -163,7 +174,10 @@ export function useUnsubscribe() {
     const qc = useQueryClient()
     return useMutation({
         mutationFn: async (token: string) =>
-            request<unknown>("/api/notifications/unsubscribe", { method: "POST", body: { token } }),
+            request<{ status: "test" } | undefined>("/api/notifications/unsubscribe", {
+                method: "POST",
+                body: { token },
+            }),
         onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-preferences"] }),
     })
 }

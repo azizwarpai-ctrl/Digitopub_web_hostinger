@@ -15,6 +15,7 @@ import { sendTemplateEmail } from "@/src/lib/email/service"
 import {
     CONFIRM_TOKEN_TTL_SECONDS,
     hashNotifyToken,
+    isSampleNotifyToken,
     signNotifyToken,
     verifyNotifyToken,
 } from "@/src/lib/notification-token"
@@ -221,8 +222,10 @@ export type ConfirmOutcome =
     | { status: "already_active"; manageUrl: string }
     | { status: "expired" }
     | { status: "invalid" }
+    | { status: "test" }
 
 export async function confirmSubscription(token: string): Promise<ConfirmOutcome> {
+    if (isSampleNotifyToken(token, ["confirm"])) return { status: "test" }
     const verified = verifyNotifyToken(token, "confirm")
     if (!verified) {
         // Signature-valid but past its expiry: offer a new link instead of "invalid".
@@ -263,6 +266,11 @@ async function subscriberFromToken(token: string, purposes: Array<"manage" | "un
     return null
 }
 
+/** True for the manage link of a test email; such links show a notice and change nothing. */
+export function isTestPreferencesLink(token: string): boolean {
+    return isSampleNotifyToken(token, ["manage"])
+}
+
 export async function getPreferences(token: string) {
     const sub = await subscriberFromToken(token, ["manage"])
     if (!sub) return null
@@ -294,9 +302,14 @@ export interface PreferencesInput {
     resume?: boolean
 }
 
-export type PreferencesOutcome = { status: "saved"; email: EmailJob | null } | { status: "invalid" } | { status: "suppressed" }
+export type PreferencesOutcome =
+    | { status: "saved"; email: EmailJob | null }
+    | { status: "invalid" }
+    | { status: "suppressed" }
+    | { status: "test" }
 
 export async function updatePreferences(token: string, input: PreferencesInput): Promise<PreferencesOutcome> {
+    if (isTestPreferencesLink(token)) return { status: "test" }
     const sub = await subscriberFromToken(token, ["manage"])
     if (!sub) return { status: "invalid" }
     if (sub.status === "bounced" || sub.status === "complained") return { status: "suppressed" }
@@ -328,7 +341,8 @@ export async function updatePreferences(token: string, input: PreferencesInput):
 // ─── Unsubscribe ──────────────────────────────────────────────────────
 
 /** Idempotent. Accepts unsub and manage tokens. Suppressed statuses are left as they are. */
-export async function unsubscribe(token: string): Promise<"ok" | "invalid"> {
+export async function unsubscribe(token: string): Promise<"ok" | "invalid" | "test"> {
+    if (isSampleNotifyToken(token, ["unsub", "manage"])) return "test"
     const sub = await subscriberFromToken(token, ["unsub", "manage"])
     if (!sub) return "invalid"
     if (sub.status === "active" || sub.status === "pending") {

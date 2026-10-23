@@ -101,7 +101,20 @@ export function ConfirmView() {
         )
     }
 
-    if (mutation.isSuccess) {
+    if (mutation.isSuccess && mutation.data.status === "test") {
+        return (
+            <Shell>
+                <div role="status" className="rounded-xl border border-border/60 bg-card p-5 space-y-2">
+                    <p className="text-sm font-medium">This link came from a test email.</p>
+                    <p className="text-sm text-muted-foreground">
+                        In a real invitation, this button confirms the subscription. Nothing was changed.
+                    </p>
+                </div>
+            </Shell>
+        )
+    }
+
+    if (mutation.isSuccess && mutation.data.status !== "test") {
         const { status, manage_url } = mutation.data
         return (
             <Shell>

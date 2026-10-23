@@ -6,6 +6,7 @@ import { __resetEnvCacheForTests } from "@/src/lib/env"
 import {
     CONFIRM_TOKEN_TTL_SECONDS,
     hashNotifyToken,
+    isSampleNotifyToken,
     signNotifyToken,
     verifyNotifyToken,
 } from "@/src/lib/notification-token"
@@ -61,5 +62,19 @@ describe("notification tokens", () => {
         const t = signNotifyToken({ purpose: "confirm", subscriberId: 1n, version: 0, now: NOW })
         expect(hashNotifyToken(t)).toMatch(/^[0-9a-f]{64}$/)
         expect(hashNotifyToken(t)).toBe(hashNotifyToken(t))
+    })
+})
+
+describe("isSampleNotifyToken", () => {
+    it("is true only for a correctly signed subscriber-0 link of an accepted purpose", () => {
+        const sample = signNotifyToken({ purpose: "confirm", subscriberId: 0n, version: 0, now: NOW })
+        expect(isSampleNotifyToken(sample, ["confirm"])).toBe(true)
+        // An old test email is still a test email.
+        expect(verifyNotifyToken(sample, "confirm", NOW + CONFIRM_TOKEN_TTL_SECONDS + 1)).toBeNull()
+        expect(isSampleNotifyToken(sample, ["confirm"])).toBe(true)
+        expect(isSampleNotifyToken(sample, ["manage", "unsub"])).toBe(false)
+        expect(isSampleNotifyToken(signNotifyToken({ purpose: "confirm", subscriberId: 7n, version: 0 }), ["confirm"])).toBe(false)
+        expect(isSampleNotifyToken(sample.slice(0, -2) + "xx", ["confirm"])).toBe(false)
+        expect(isSampleNotifyToken(null, ["confirm"])).toBe(false)
     })
 })

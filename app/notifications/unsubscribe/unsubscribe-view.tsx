@@ -28,6 +28,13 @@ export function UnsubscribeView() {
                         This page needs an unsubscribe link. Please use the link at the bottom of an alert
                         email.
                     </p>
+                ) : mutation.isSuccess && mutation.data.data?.status === "test" ? (
+                    <div role="status" className="space-y-2">
+                        <p className="text-sm font-medium">This link came from a test email.</p>
+                        <p className="text-sm text-muted-foreground">
+                            In a real email, this button stops all alert emails. Nothing was unsubscribed.
+                        </p>
+                    </div>
                 ) : mutation.isSuccess ? (
                     <p role="status" className="text-sm">
                         You have been unsubscribed and will receive no further alerts. You can subscribe
