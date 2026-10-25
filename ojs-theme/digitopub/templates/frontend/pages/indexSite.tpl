@@ -71,6 +71,7 @@
 							</div>
 							<div class="dp-journal-card__body">
 								<h3 class="dp-journal-card__title"><a href="{$journalUrl}">{$journal->getLocalizedName()|escape}</a></h3>
+								{if isset($digitopubSpecializations[$journal->getId()])}{assign var=dpSpec value=$digitopubSpecializations[$journal->getId()]}<span class="dp-journal-card__spec">{$dpSpec|escape}</span>{/if}
 							</div>
 							<div class="dp-journal-card__actions">
 								<a href="{$submitUrl}" class="digitopub-btn digitopub-btn--primary digitopub-btn--sm digitopub-btn--block">Submit<span class="pkp_screen_reader"> to {$journal->getLocalizedName()|escape}</span></a>

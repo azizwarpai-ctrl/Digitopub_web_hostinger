@@ -17,6 +17,7 @@ use APP\core\Application;
 use APP\template\TemplateManager;
 use PKP\plugins\Hook;
 use PKP\plugins\ThemePlugin;
+use Illuminate\Support\Facades\DB;
 
 class DigitopubThemePlugin extends ThemePlugin
 {
@@ -187,6 +188,29 @@ class DigitopubThemePlugin extends ThemePlugin
                 }
             }
             $templateMgr->assign('digitopubCoverThumbs', $thumbs);
+            $templateMgr->assign('digitopubSpecializations', $this->journalSpecializations());
+        }
+    }
+
+    /**
+     * Journal specializations set in the digitopub dashboard (#234), as
+     * [journalId => name]. digitopub stores them in journal_settings
+     * (digitopubSpecialization, locale ''). Read directly rather than through
+     * $journal->getData(): OJS only loads settings declared in the context
+     * schema, and that schema is built and cached before theme plugins load.
+     */
+    private function journalSpecializations(): array
+    {
+        try {
+            return DB::table('journal_settings')
+                ->where('setting_name', 'digitopubSpecialization')
+                ->where('locale', '')
+                ->pluck('setting_value', 'journal_id')
+                ->mapWithKeys(fn ($value, $id) => [(int) $id => (string) $value])
+                ->all();
+        } catch (\Throwable $e) {
+            error_log('[digitopub theme] could not read journal specializations: ' . $e->getMessage());
+            return [];
         }
     }
 
