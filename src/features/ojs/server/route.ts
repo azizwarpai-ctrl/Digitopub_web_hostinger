@@ -9,6 +9,8 @@ import { prisma } from "@/src/lib/db/config"
 import { verifyCronSecret } from "@/src/lib/cron-auth"
 import { withSyncRun } from "./sync-runs"
 import { refreshOjsJournalSnapshots } from "./ojs-journal-snapshots"
+import { drainDueSyncJobs } from "./ojs-sync-jobs"
+import { cronEndpoint } from "@/src/lib/cron-endpoint"
 
 // Window during which a fresh sync request will be rejected. Covers both
 // "another sync is in flight" and "a sync just finished" — Google/cron
@@ -171,6 +173,14 @@ app.get("/health", async (c) => {
 
 // Mount Provisioning router
 app.route("/register", provisionRouter)
+
+// ─── POST /ojs/cron/push-sync — drain the OJS write queue (#234) ──
+// Retries journal specializations (and later other writes) that could not
+// reach OJS when they were saved. Every 10 minutes: docs/ops/cron-schedule.md.
+app.post("/cron/push-sync", cronEndpoint("ojs_push_sync", async () => {
+    const stats = await drainDueSyncJobs()
+    return { partial: stats.retrying > 0 || stats.failed > 0, stats }
+}, { lockWindowMs: 2 * 60 * 1000 }))
 
 export { app as ojsRouter }
 

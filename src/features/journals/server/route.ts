@@ -8,12 +8,17 @@ import { prisma } from "@/src/lib/db/config"
 import { normalizeOjsAssetUrl } from "@/src/features/ojs/utils/ojs-config"
 import { journalCreateSchema, journalUpdateSchema, journalIdParamSchema, journalSlugParamSchema } from "@/src/features/journals/schemas/journal-schema"
 import { hostingRequestRouter } from "./hosting-request-route"
+import { specializationRouter } from "./specialization-route"
 import { resolveJournalRecord } from "./resolve-journal"
 
 const app = new Hono()
 
 // ─── POST /journals/register — Public journal-hosting request (hotfix A5) ──
 app.route("/", hostingRequestRouter)
+
+// ─── /journals/specializations, /journals/:id/specialization (#234) ──
+// Before GET /:id, which would otherwise take "specializations" as an id.
+app.route("/", specializationRouter)
 
 let runningFullSyncPromise: Promise<void> | null = null;
 
