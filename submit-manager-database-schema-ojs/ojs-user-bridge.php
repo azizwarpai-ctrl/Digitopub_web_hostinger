@@ -88,6 +88,23 @@ if (!$payload) {
     exit;
 }
 
+// --- ACTION DISPATCH ---
+// A payload without "action" is user provisioning, exactly as before. Every
+// other action is listed here explicitly and writes one known OJS setting;
+// there is deliberately no generic "set any setting" action.
+$action = $payload['action'] ?? 'provision_user';
+
+if ($action === 'set_journal_specialization') {
+    bridgeSetJournalSpecialization(bridgeConnect($config), $payload);
+    exit;
+}
+
+if ($action !== 'provision_user') {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Unknown action']);
+    exit;
+}
+
 $email     = trim($payload['email'] ?? '');
 $firstName = trim($payload['firstName'] ?? '');
 $lastName  = trim($payload['lastName'] ?? '');
@@ -335,3 +352,110 @@ echo json_encode([
     'user_id' => $userId,
     'username' => $username,
 ]);
+
+// --- ACTION: set_journal_specialization (#234) ---
+
+/**
+ * Open a PDO connection from the OJS [database] config, or answer 500 and exit.
+ * Same settings as the provisioning connection above.
+ */
+function bridgeConnect(array $config): PDO
+{
+    if (empty($config['database'])) {
+        error_log('[OJS-Bridge] FATAL: Failed to parse config.inc.php or [database] section missing.');
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'OJS database configuration error']);
+        exit;
+    }
+    $db = $config['database'];
+    $host = $db['host'] ?? 'localhost';
+    $port = intval($db['port'] ?? 3306);
+    $name = $db['name'] ?? '';
+    try {
+        return new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4", $db['username'] ?? '', $db['password'] ?? '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+    } catch (PDOException $e) {
+        error_log('[OJS-Bridge] DB connection failed: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+        exit;
+    }
+}
+
+/**
+ * Store a journal's specialization, chosen in the digitopub dashboard, as the
+ * journal setting `digitopubSpecialization` (locale ''). The digitopub theme
+ * declares that property and shows it. An empty value removes the setting.
+ *
+ * Payload: {"action":"set_journal_specialization","journal_id":10,"value":"Dentistry"}
+ * Answer:  {"success":true,"journal_id":10,"before":"General Science","after":"Dentistry"}
+ */
+function bridgeSetJournalSpecialization(PDO $pdo, array $payload): void
+{
+    $settingName = 'digitopubSpecialization';
+    $journalId = filter_var($payload['journal_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $value = $payload['value'] ?? null;
+
+    if ($journalId === false) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'journal_id must be a positive integer']);
+        return;
+    }
+    if ($value !== null && !is_string($value)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'value must be a string or null']);
+        return;
+    }
+    $value = $value === null ? '' : trim($value);
+    // journal_settings is utf8mb3: no 4-byte characters. No control characters.
+    if (mb_strlen($value) > 100 || preg_match('/[\x{10000}-\x{10FFFF}]|\p{Cc}/u', $value) !== 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'value must be at most 100 plain characters']);
+        return;
+    }
+
+    $stmt = $pdo->prepare('SELECT journal_id FROM journals WHERE journal_id = ?');
+    $stmt->execute([$journalId]);
+    if (!$stmt->fetch()) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Journal not found']);
+        return;
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare("SELECT setting_value FROM journal_settings WHERE journal_id = ? AND locale = '' AND setting_name = ? FOR UPDATE");
+        $stmt->execute([$journalId, $settingName]);
+        $row = $stmt->fetch();
+        $before = $row ? $row['setting_value'] : null;
+
+        if ($value === '') {
+            $pdo->prepare("DELETE FROM journal_settings WHERE journal_id = ? AND locale = '' AND setting_name = ?")
+                ->execute([$journalId, $settingName]);
+        } else {
+            $pdo->prepare("INSERT INTO journal_settings (journal_id, locale, setting_name, setting_value) VALUES (?, '', ?, ?)
+                           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)")
+                ->execute([$journalId, $settingName, $value]);
+        }
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[OJS-Bridge] set_journal_specialization failed: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Failed to save journal specialization']);
+        return;
+    }
+
+    http_response_code(200);
+    echo json_encode([
+        'success' => true,
+        'journal_id' => $journalId,
+        'before' => $before,
+        'after' => $value === '' ? null : $value,
+    ]);
+}

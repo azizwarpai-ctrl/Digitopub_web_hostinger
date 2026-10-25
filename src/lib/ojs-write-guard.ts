@@ -1,14 +1,17 @@
 /**
  * Audited single-path writer for the OJS database.
  *
- * Constitution rule (UIET-P1): digitopub writes to OJS ONLY through this
- * helper, ONLY when ENABLE_ORCID_OJS_BACKFILL=true, and EVERY write is
- * audited in audit_ojs_writes (success or failure).
+ * digitopub writes to OJS ONLY through the functions in this file, and EVERY
+ * write is audited in audit_ojs_writes (success or failure), audit row first:
+ *   - writeOrcidToOjsWithAudit: ORCID backfill (UIET-P1), only when
+ *     ENABLE_ORCID_OJS_BACKFILL=true.
+ *   - setJournalSpecializationInOjsWithAudit: journal specialization (#234),
+ *     through the OJS user bridge. Called by the OJS sync queue.
  */
 
 import { randomUUID } from "node:crypto"
 import { prisma } from "./db/config"
-import { getOjsConnection } from "@/src/features/ojs/server/ojs-client"
+import { getOjsConnection, postToUserBridge } from "@/src/features/ojs/server/ojs-client"
 import { getFlagsEnv } from "./env"
 
 export interface WriteOrcidInput {
@@ -118,5 +121,81 @@ export async function writeOrcidToOjsWithAudit(
         /* ignore */
       }
     }
+  }
+}
+
+export interface SetJournalSpecializationInput {
+  /** OJS journals.journal_id (digitopub Journal.ojs_id). */
+  ojsJournalId: number
+  /** New specialization; null or "" removes the OJS setting. */
+  value: string | null
+  actorAdminId?: bigint | null
+  requestId?: string
+}
+
+export interface SetJournalSpecializationResult {
+  success: boolean
+  auditId: bigint
+  before?: string | null
+  after?: string | null
+  error?: string
+  /** False when retrying the same request cannot succeed (e.g. 400/404). */
+  retryable: boolean
+}
+
+/**
+ * Store a journal's specialization in OJS (journal setting
+ * `digitopubSpecialization`) via the bridge action set_journal_specialization.
+ *
+ *   1. INSERT audit_ojs_writes (success=NULL, after_value = intended value).
+ *   2. POST to the OJS user bridge, once (the sync queue owns retries).
+ *   3. UPDATE the audit row with the outcome and the value OJS held before.
+ */
+export async function setJournalSpecializationInOjsWithAudit(
+  input: SetJournalSpecializationInput
+): Promise<SetJournalSpecializationResult> {
+  const value = input.value?.trim() || null
+  const auditRow = await prisma.auditOjsWrite.create({
+    data: {
+      request_id: input.requestId ?? randomUUID(),
+      ojs_table: "journal_settings",
+      ojs_column_set: "setting_name='digitopubSpecialization'; locale=''",
+      reason: "journal_specialization",
+      target_type: "journal",
+      target_id: String(input.ojsJournalId),
+      actor_admin_id: input.actorAdminId ?? null,
+      after_value: value,
+    },
+    select: { id: true },
+  })
+
+  const result = await postToUserBridge({
+    action: "set_journal_specialization",
+    journal_id: input.ojsJournalId,
+    value,
+  })
+
+  if (result.ok) {
+    const before = typeof result.data.before === "string" ? result.data.before : null
+    const after = typeof result.data.after === "string" ? result.data.after : null
+    await recordOutcome(auditRow.id, { success: true, resolved_at: new Date(), before_value: before, after_value: after })
+    return { success: true, auditId: auditRow.id, before, after, retryable: false }
+  }
+
+  const error = result.status ? `HTTP ${result.status}: ${result.error}` : result.error
+  console.error(`[ojs-write-guard] journal specialization write failed for ojs journal ${input.ojsJournalId}: ${error}`)
+  await recordOutcome(auditRow.id, { success: false, resolved_at: new Date(), error: error.slice(0, 1000) })
+  return { success: false, auditId: auditRow.id, error, retryable: result.retryable }
+}
+
+/** Resolve an audit row; a failure here is logged, never thrown. */
+async function recordOutcome(
+  id: bigint,
+  data: { success: boolean; resolved_at: Date; error?: string; before_value?: string | null; after_value?: string | null }
+): Promise<void> {
+  try {
+    await prisma.auditOjsWrite.update({ where: { id }, data })
+  } catch (err) {
+    console.error(`[ojs-write-guard] failed to resolve audit row ${id}:`, err)
   }
 }
