@@ -551,12 +551,15 @@ model UserOrcidLink {
   @@map("user_orcid_links")
 }
 
-/// Append-only audit log of every write digitopub has performed on the OJS database.
+/// Append-only audit log of every write digitopub has performed on OJS.
+/// ORCID backfill rows carry `orcid` + `ojs_user_id`; other writes (#234
+/// journal specialization) identify their row with `target_type` +
+/// `target_id` and record the value before and after the write.
 model AuditOjsWrite {
   id             BigInt    @id @default(autoincrement())
   request_id     String    @db.VarChar(36)
-  orcid          String    @db.VarChar(19)
-  ojs_user_id    BigInt
+  orcid          String?   @db.VarChar(19)
+  ojs_user_id    BigInt?
   ojs_table      String    @db.VarChar(64)
   ojs_column_set String    @db.Text
   planned_at     DateTime  @default(now())
@@ -564,10 +567,16 @@ model AuditOjsWrite {
   resolved_at    DateTime?
   error          String?   @db.Text
   reason         String    @db.VarChar(64)
+  target_type    String?   @db.VarChar(32)
+  target_id      String?   @db.VarChar(64)
+  actor_admin_id BigInt?
+  before_value   String?   @db.Text
+  after_value    String?   @db.Text
 
   @@index([orcid])
   @@index([ojs_user_id])
   @@index([planned_at])
+  @@index([target_type, target_id])
   @@map("audit_ojs_writes")
 }
 
@@ -909,4 +918,49 @@ model NotificationDelivery {
   @@index([sent_at])
   @@index([subscriber_id])
   @@map("notification_deliveries")
+}
+
+// =====================================================================
+// Journal specialization (#234)
+// =====================================================================
+
+/// Admin-managed list of journal specializations. `Journal.field` holds the
+/// chosen name as a plain string (it is read in many places); writes are
+/// validated against the active names here, and a rename rewrites every
+/// journal that uses the old name.
+model JournalSpecialization {
+  id         BigInt   @id @default(autoincrement())
+  name       String   @unique @db.VarChar(100)
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  @@index([is_active, sort_order])
+  @@map("journal_specializations")
+}
+
+/// Outbox of pending writes to OJS. A change is saved in digitopub first,
+/// then pushed to OJS by this queue so an OJS outage never blocks an admin.
+/// At most one open job per (action, target): a newer save replaces the
+/// payload of the job that is still pending. Status values: pending,
+/// running, succeeded, failed.
+model OjsSyncJob {
+  id              BigInt    @id @default(autoincrement())
+  action          String    @db.VarChar(64)
+  target_type     String    @db.VarChar(32)
+  target_id       String    @db.VarChar(64)
+  payload         Json
+  status          String    @default("pending") @db.VarChar(20)
+  attempts        Int       @default(0)
+  last_error      String?   @db.Text
+  next_attempt_at DateTime  @default(now())
+  created_by      BigInt?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now()) @updatedAt
+  completed_at    DateTime?
+
+  @@index([status, next_attempt_at])
+  @@index([action, target_type, target_id])
+  @@map("ojs_sync_jobs")
 }
