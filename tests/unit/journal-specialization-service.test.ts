@@ -45,6 +45,7 @@ import {
   SpecializationError,
   createSpecialization,
   getAllJournalSyncStatuses,
+  getJournalSpecialization,
   listSpecializations,
   setJournalSpecialization,
   updateSpecialization,
@@ -167,6 +168,14 @@ describe("specialization-service (#234)", () => {
       await expect(updateSpecialization(2n, { name: "medicine" }, 3n)).rejects.toMatchObject({ status: 409 })
       expect(h.specUpdate).not.toHaveBeenCalled()
     })
+  })
+
+  it("loads the edit-page journal by numeric id only (never via ojs_id)", async () => {
+    h.journalFindUnique.mockResolvedValue({ id: 3n, title: "J3", field: "General Science", ojs_id: "4", ojs_path: "jirdm" })
+    h.latest.mockResolvedValue(null)
+    const detail = await getJournalSpecialization(3n)
+    expect(h.journalFindUnique.mock.calls[0][0].where).toEqual({ id: 3n })
+    expect(detail).toMatchObject({ journal_id: "3", ojs_id: "4", sync: { state: "never" } })
   })
 
   it("keeps only the latest job per journal for the status map", async () => {

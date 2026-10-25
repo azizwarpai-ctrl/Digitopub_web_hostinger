@@ -13,6 +13,7 @@ import {
   SpecializationError,
   createSpecialization,
   getAllJournalSyncStatuses,
+  getJournalSpecialization,
   listSpecializations,
   retryJournalSpecializationSync,
   setJournalSpecialization,
@@ -85,6 +86,16 @@ app.patch(
     }
   }
 )
+
+// ─── GET /journals/:id/specialization — one journal by numeric id (admin edit page) ──
+app.get("/:id/specialization", requireAdmin, zValidator("param", journalIdParamSchema), async (c) => {
+  try {
+    const { id } = c.req.valid("param")
+    return c.json({ success: true, data: await getJournalSpecialization(BigInt(id)) })
+  } catch (error) {
+    return fail(c, error, "Failed to load journal")
+  }
+})
 
 // ─── PUT /journals/:id/specialization — change a journal's specialization (admin) ──
 app.put(

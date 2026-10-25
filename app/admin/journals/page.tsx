@@ -45,6 +45,7 @@ export default async function JournalsPage() {
     abbreviation: j.abbreviation ?? null,
     issn: j.issn ?? null,
     field: j.field,
+    ojsPath: j.ojs_path ?? null,
     status: j.status ?? "unknown",
     coverImageUrl: j.cover_image_url ?? null,
     createdAt: new Date(j.created_at).toISOString(),

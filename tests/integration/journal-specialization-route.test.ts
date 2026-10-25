@@ -18,6 +18,7 @@ const svc = vi.hoisted(() => ({
   setJournalSpecialization: vi.fn(),
   retryJournalSpecializationSync: vi.fn(),
   getAllJournalSyncStatuses: vi.fn(),
+  getJournalSpecialization: vi.fn(),
 }))
 
 vi.mock("@/src/features/journals/server/specialization-service", async () => {
@@ -148,6 +149,17 @@ describe("journal specialization routes (#234)", () => {
     mockSession = admin
     const res = await app().request("/journals/specializations/2", { ...json({}), method: "PATCH" })
     expect(res.status).toBe(400)
+  })
+
+  it("loads one journal by numeric id for the edit page (admin only)", async () => {
+    expect((await app().request("/journals/3/specialization")).status).toBe(401)
+
+    mockSession = admin
+    svc.getJournalSpecialization.mockResolvedValue({ journal_id: "3", title: "J3", field: "General Science", ojs_id: "4", ojs_path: "jirdm", sync: { state: "never" } })
+    const res = await app().request("/journals/3/specialization")
+    expect(res.status).toBe(200)
+    expect(svc.getJournalSpecialization).toHaveBeenCalledWith(3n)
+    expect((await res.json()).data).toMatchObject({ journal_id: "3", ojs_id: "4" })
   })
 
   it("retries the OJS sync for a journal", async () => {

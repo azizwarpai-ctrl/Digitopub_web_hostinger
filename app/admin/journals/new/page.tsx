@@ -12,24 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { useGetSpecializations } from "@/src/features/journals/api/use-specializations"
 
-const fields = [
-  "Medicine",
-  "Dentistry",
-  "Technology",
-  "Engineering",
-  "Computer Science",
-  "Biology",
-  "Chemistry",
-  "Physics",
-  "Mathematics",
-  "Social Sciences",
-  "Business",
-  "Other",
-]
 
 export default function NewJournalPage() {
   const router = useRouter()
+  const { data: specializations, isLoading: specsLoading, isError: specsError } = useGetSpecializations()
+  const fields = (specializations ?? []).map((s) => s.name)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -160,9 +149,18 @@ export default function NewJournalPage() {
                   required
                   value={formData.field}
                   onValueChange={(value) => setFormData({ ...formData, field: value })}
+                  disabled={specsLoading || fields.length === 0}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select field" />
+                  <SelectTrigger id="field">
+                    <SelectValue
+                      placeholder={
+                        specsLoading
+                          ? "Loading fields…"
+                          : fields.length === 0
+                            ? "No fields available"
+                            : "Select field"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {fields.map((field) => (
@@ -172,6 +170,12 @@ export default function NewJournalPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {(specsError || (!specsLoading && fields.length === 0)) && (
+                  <p className="text-sm text-destructive">
+                    No active specializations available.{" "}
+                    <Link href="/admin/journals/specializations" className="underline">Manage list</Link>
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -283,7 +287,7 @@ export default function NewJournalPage() {
             )}
 
             <div className="flex gap-4">
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || !formData.field}>
                 {isLoading ? "Creating..." : "Create Journal"}
               </Button>
               <Button type="button" variant="outline" asChild>

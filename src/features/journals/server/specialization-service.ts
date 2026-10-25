@@ -105,6 +105,28 @@ export async function setJournalSpecialization(journalId: bigint, name: string, 
   return { journal_id: journalId.toString(), field: spec.name, sync }
 }
 
+/**
+ * One journal by its numeric digitopub id, for the admin edit page. Not
+ * resolveJournalRecord(): that tries ojs_id before the numeric id, and in
+ * production digitopub ids and OJS ids differ for some journals (id 3 has
+ * ojs_id 4), so it can return a different journal than the one clicked.
+ */
+export async function getJournalSpecialization(journalId: bigint) {
+  const journal = await prisma.journal.findUnique({
+    where: { id: journalId },
+    select: { id: true, title: true, field: true, ojs_id: true, ojs_path: true },
+  })
+  if (!journal) throw new SpecializationError("Journal not found", 404)
+  return {
+    journal_id: journal.id.toString(),
+    title: journal.title,
+    field: journal.field,
+    ojs_id: journal.ojs_id,
+    ojs_path: journal.ojs_path,
+    sync: await getJournalSyncStatus(journal.id, journal.ojs_id),
+  }
+}
+
 export async function retryJournalSpecializationSync(journalId: bigint) {
   const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, ojs_id: true } })
   if (!journal) throw new SpecializationError("Journal not found", 404)
