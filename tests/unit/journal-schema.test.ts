@@ -164,6 +164,20 @@ describe('Journal Schemas', () => {
             })
             expect(result.success).toBe(false)
         })
+
+        // #234: a partial update must never inject create-time defaults, or a
+        // title-only PATCH would reset both fees to 0 and status to "active".
+        it('should not inject defaults for omitted keys', () => {
+            const result = journalUpdateSchema.parse({ title: 'Updated Title' })
+            expect(result).toEqual({ title: 'Updated Title' })
+        })
+
+        // #234: field changes go through PUT /journals/:id/specialization so
+        // they are validated against the managed list and synced to OJS.
+        it('should strip field', () => {
+            const result = journalUpdateSchema.parse({ field: 'Dentistry', title: 'T' })
+            expect(result).toEqual({ title: 'T' })
+        })
     })
 
     // ═══════════════════════════════════════
