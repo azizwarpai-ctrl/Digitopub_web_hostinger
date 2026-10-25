@@ -34,7 +34,9 @@ The system enforces strict identity separation. **The previous "digitopub never 
 - **submitmanager.com (OJS)**:
   - Owns canonical public-user identities (editorial workflows still require an OJS account).
   - Owns ALL submission and editorial workflows.
-  - digitopub writes to OJS via exactly ONE audited path: when `ENABLE_ORCID_OJS_BACKFILL=true`, the ORCID iD is written into OJS `user_settings` on first email-match login. Every such write is logged in `audit_ojs_writes`.
+  - digitopub writes to OJS only through the guarded, audited functions in `src/lib/ojs-write-guard.ts`. Every write is logged in `audit_ojs_writes` (audit row first). Today there are two:
+    - ORCID backfill: when `ENABLE_ORCID_OJS_BACKFILL=true`, the ORCID iD is written into OJS `user_settings` on first email-match login.
+    - Journal specialization (#234): an admin's choice of `Journal.field` is written to the OJS journal setting `digitopubSpecialization` through the `set_journal_specialization` action of `ojs-user-bridge.php`, queued in `ojs_sync_jobs` and retried by `POST /api/ojs/cron/push-sync`.
 
 ## Public-User Identity (UIET-P1) — what changed and why
 
@@ -62,7 +64,7 @@ The system enforces strict identity separation. **The previous "digitopub never 
 
 **The hard rules** (enforced by ESLint `no-restricted-imports` in `eslint.config.mjs`, which bans importing `getSession`/`createSession`/`destroySession` and `jose.jwtVerify` in `app/**` and `src/server/routes/**` outside admin paths — there is no separate CI grep):
 - NO public route may call `getSession()` or `jose.jwtVerify` directly. Public routes use `getIdentity(request)` from `src/lib/identity-cookie.ts`.
-- digitopub writes to OJS ONLY through `writeOrcidToOjsWithAudit()` in `src/lib/ojs-write-guard.ts`. Every write produces an `audit_ojs_writes` row.
+- digitopub writes to OJS ONLY through the functions in `src/lib/ojs-write-guard.ts` (`writeOrcidToOjsWithAudit()`, `setJournalSpecializationInOjsWithAudit()`). Every write produces an `audit_ojs_writes` row. New kinds of OJS write get their own function there and their own explicitly allowlisted bridge action, never a generic "set any setting" path.
 - `ENABLE_ORCID_OJS_BACKFILL` defaults to `false` in production. Flip with intent only.
 - Submission flow (registration → OJS) is unchanged. digitopub never intercepts submit clicks.
 
