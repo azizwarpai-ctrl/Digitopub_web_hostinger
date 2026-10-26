@@ -31,6 +31,11 @@ vi.mock('@/src/lib/db/auth', () => ({
 
 vi.mock('@/src/lib/db/config', () => ({
     prisma: {
+        $queryRaw: vi.fn(),
+        $transaction: (fn: (tx: never) => unknown) => fn({
+            $queryRaw: prisma.$queryRaw,
+            journal: { create: prisma.journal.create },
+        } as never),
         user: {
             findUnique: vi.fn(),
             create: vi.fn(),
@@ -144,6 +149,7 @@ describe('Security & Authorization Tests', () => {
             }
             vi.mocked(prisma.journal.create).mockResolvedValue(mockJournal as any)
             vi.mocked(prisma.journalSpecialization.findFirst).mockResolvedValue({ id: BigInt(1), name: 'CS', is_active: true } as any)
+            vi.mocked(prisma.$queryRaw).mockResolvedValue([{ name: 'CS' }] as never)
 
             const res = await app.request('/api/journals', {
                 method: 'POST',

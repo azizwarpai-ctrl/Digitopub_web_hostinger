@@ -7,12 +7,18 @@ const h = vi.hoisted(() => ({
   journalFindMany: vi.fn(),
   journalUpdateMany: vi.fn(),
   defaultFindFirst: vi.fn(),
+  txQueryRaw: vi.fn(),
   settingUpsert: vi.fn(),
   ojsQuery: vi.fn(),
 }))
 
 vi.mock("@/src/lib/db/config", () => ({
   prisma: {
+    $queryRaw: h.txQueryRaw,
+    $transaction: (fn: (tx: never) => unknown) => fn({
+      $queryRaw: h.txQueryRaw,
+      journal: { create: h.journalCreate },
+    } as never),
     journal: {
       findUnique: h.journalFindUnique,
       create: h.journalCreate,
@@ -49,18 +55,20 @@ describe("OJS journal discovery specialization (#234)", () => {
     h.settingUpsert.mockResolvedValue({})
     h.ojsQuery.mockResolvedValue([{ c: 1, s: "1" }])
     h.defaultFindFirst.mockResolvedValue({ name: "Dental Medicine", is_default: true, is_active: true })
+    h.txQueryRaw.mockResolvedValue([{ name: "Dental Medicine" }])
   })
 
-  it("uses the current name of the active default after it is renamed", async () => {
+  it("locks the active default and uses its current name for a new journal", async () => {
     const result = await syncOjsJournals([incoming])
 
     expect(result).toMatchObject({ synced: 1, errors: 0 })
-    expect(h.defaultFindFirst.mock.calls[0][0].where).toEqual({ is_default: true, is_active: true })
+    expect(h.txQueryRaw.mock.calls[0][0].join(" ")).toContain("FOR UPDATE")
     expect(h.journalCreate.mock.calls[0][0].data.field).toBe("Dental Medicine")
   })
 
   it("does not create a journal with an unmanaged fallback when no active default exists", async () => {
     h.defaultFindFirst.mockResolvedValue(null)
+    h.txQueryRaw.mockResolvedValue([])
 
     const result = await syncOjsJournals([incoming])
 
@@ -75,5 +83,6 @@ describe("OJS journal discovery specialization (#234)", () => {
 
     expect(result).toMatchObject({ synced: 1, errors: 0 })
     expect(h.defaultFindFirst).not.toHaveBeenCalled()
+    expect(h.txQueryRaw).not.toHaveBeenCalled()
   })
 })

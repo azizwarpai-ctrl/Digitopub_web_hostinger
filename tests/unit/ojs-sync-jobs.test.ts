@@ -9,13 +9,20 @@ const hoisted = vi.hoisted(() => ({
     groupBy: vi.fn(),
     create: vi.fn(),
     updateMany: vi.fn(),
+    executeRaw: vi.fn(),
     queryRaw: vi.fn(),
     writer: vi.fn(),
 }))
 
 vi.mock("@/src/lib/db/config", () => ({
     prisma: {
+        $executeRaw: hoisted.executeRaw,
         $queryRaw: hoisted.queryRaw,
+        $transaction: (fn: (tx: unknown) => unknown) => fn({
+            $executeRaw: hoisted.executeRaw,
+            $queryRaw: hoisted.queryRaw,
+            ojsSyncJob: { findUniqueOrThrow: hoisted.findUniqueOrThrow },
+        }),
         ojsSyncJob: {
             findUnique: hoisted.findUnique,
             findUniqueOrThrow: hoisted.findUniqueOrThrow,
@@ -68,7 +75,8 @@ describe("ojs-sync-jobs (#234)", () => {
     beforeEach(() => {
         for (const fn of Object.values(hoisted)) fn.mockReset()
         hoisted.updateMany.mockResolvedValue({ count: 1 })
-        hoisted.queryRaw.mockResolvedValue([])
+        hoisted.executeRaw.mockResolvedValue(1)
+        hoisted.queryRaw.mockResolvedValue([{ id: 2n }])
         hoisted.findUniqueOrThrow.mockImplementation(async ({ where }) => job({ id: where.id }))
         hoisted.create.mockImplementation(async ({ data }) => job({ id: 2n, ...data }))
     })
@@ -82,49 +90,36 @@ describe("ojs-sync-jobs (#234)", () => {
     describe("enqueueSyncJob", () => {
         const input = { action: JOB_SET_JOURNAL_SPECIALIZATION, targetType: "journal", targetId: "5", payload: { ojs_journal_id: 10, value: "Medicine" }, createdBy: 3n }
 
-        it("creates a job holding the pending slot", async () => {
-            hoisted.findUnique.mockResolvedValue(null)
-            await enqueueSyncJob(input)
-            expect(hoisted.queryRaw.mock.calls[0][0].join(" ")).toContain("FOR UPDATE")
-            expect(hoisted.create.mock.calls[0][0].data).toMatchObject({ pending_key: KEY, payload: { value: "Medicine" }, created_by: 3n })
-        })
+        it("atomically inserts or replaces the pending payload without an absent-row lock", async () => {
+            const result = await enqueueSyncJob(input)
 
-        it("replaces the pending payload only while it is still pending", async () => {
-            hoisted.queryRaw.mockResolvedValue([{ id: 9n, created_by: 3n }])
-            hoisted.findUnique.mockResolvedValue(job({ id: 9n, attempts: 4 }))
-            await enqueueSyncJob(input)
+            expect(result.id).toBe(2n)
+            expect(hoisted.executeRaw).toHaveBeenCalledOnce()
+            const sql = hoisted.executeRaw.mock.calls[0][0].join(" ")
+            expect(sql).toContain("ON DUPLICATE KEY UPDATE")
+            expect(sql).not.toContain("FOR UPDATE")
+            expect(hoisted.queryRaw.mock.calls[0][0].join(" ")).toContain("LAST_INSERT_ID")
             expect(hoisted.create).not.toHaveBeenCalled()
-            expect(hoisted.updateMany.mock.calls[0][0]).toMatchObject({
-                where: { id: 9n, status: "pending" },
-                data: { payload: { value: "Medicine" }, attempts: 0, last_error: null },
-            })
+            expect(hoisted.updateMany).not.toHaveBeenCalled()
         })
 
-        it("queues a new job when the pending one was claimed meanwhile", async () => {
-            hoisted.queryRaw.mockResolvedValueOnce([{ id: 9n, created_by: 3n }]).mockResolvedValueOnce([])
-            hoisted.findUnique.mockResolvedValueOnce(job({ id: 9n })).mockResolvedValueOnce(null)
-            hoisted.updateMany.mockResolvedValueOnce({ count: 0 })
-            await enqueueSyncJob(input)
-            expect(hoisted.create).toHaveBeenCalledOnce()
-        })
-
-        it("replaces instead when a concurrent save created the pending job first", async () => {
-            hoisted.queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 9n, created_by: 3n }])
-            hoisted.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(job({ id: 9n }))
-            hoisted.create.mockRejectedValueOnce(unique())
-            await enqueueSyncJob(input)
-            expect(hoisted.updateMany.mock.calls[0][0].where).toEqual({ id: 9n, status: "pending" })
-        })
-
-        it("uses the transaction client when given one", async () => {
+        it("uses one transaction connection for the upsert and id lookup", async () => {
             const tx = {
-                $queryRaw: vi.fn().mockResolvedValue([]),
-                ojsSyncJob: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue(job()) },
+                $executeRaw: vi.fn().mockResolvedValue(1),
+                $queryRaw: vi.fn().mockResolvedValue([{ id: 9n }]),
+                ojsSyncJob: {
+                    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+                    findUniqueOrThrow: vi.fn().mockResolvedValue(job({ id: 9n })),
+                },
             }
-            await enqueueSyncJob(input, tx as never)
+
+            const result = await enqueueSyncJob(input, tx as never)
+
+            expect(result.id).toBe(9n)
+            expect(tx.$executeRaw).toHaveBeenCalledOnce()
             expect(tx.$queryRaw).toHaveBeenCalledOnce()
-            expect(tx.ojsSyncJob.create).toHaveBeenCalledOnce()
-            expect(hoisted.create).not.toHaveBeenCalled()
+            expect(hoisted.executeRaw).not.toHaveBeenCalled()
+            expect(hoisted.queryRaw).not.toHaveBeenCalled()
         })
     })
 

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/src/lib/db/config"
+import { withDeadlockRetry } from "@/src/lib/db/deadlock-retry"
 import { setJournalSpecializationInOjsWithAudit } from "@/src/lib/ojs-write-guard"
 
 /**
@@ -78,50 +79,34 @@ export function backoffMs(attempts: number): number {
  */
 export async function enqueueSyncJob(
     input: { action: string; targetType: string; targetId: string; payload: object; createdBy?: bigint | null },
-    db: Db = prisma
+    db?: Db
 ): Promise<SyncJob> {
-    const key = slotKey(input.action, input.targetType, input.targetId)
-    const payload = JSON.parse(JSON.stringify(input.payload))
+    if (!db) return withDeadlockRetry((tx) => enqueueSyncJob(input, tx))
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-        // A locking current read avoids acting on a stale REPEATABLE READ
-        // snapshot while a worker claims or finishes the pending job.
-        const pendingRows = await db.$queryRaw<Array<{ id: bigint; created_by: bigint | null }>>`
-            SELECT id, created_by FROM ojs_sync_jobs WHERE pending_key = ${key} FOR UPDATE
-        `
-        const pending = pendingRows[0]
-        if (pending) {
-            // Conditional: if a worker claimed it meanwhile, its old payload is
-            // already on its way, so fall through and queue a new job instead.
-            const replaced = await db.ojsSyncJob.updateMany({
-                where: { id: pending.id, status: "pending" },
-                data: {
-                    payload,
-                    attempts: 0,
-                    last_error: null,
-                    next_attempt_at: new Date(),
-                    created_by: input.createdBy ?? pending.created_by,
-                },
-            })
-            if (replaced.count === 1) return db.ojsSyncJob.findUniqueOrThrow({ where: { id: pending.id } })
-            continue
-        }
-        try {
-            return await db.ojsSyncJob.create({
-                data: {
-                    action: input.action,
-                    target_type: input.targetType,
-                    target_id: input.targetId,
-                    payload,
-                    pending_key: key,
-                    created_by: input.createdBy ?? null,
-                },
-            })
-        } catch (error) {
-            if (!isUniqueViolation(error)) throw error // another save queued one first: replace it
-        }
-    }
-    throw new Error(`Could not queue OJS sync job for ${key}`)
+    const key = slotKey(input.action, input.targetType, input.targetId)
+    const payload = JSON.stringify(input.payload)
+
+    // One atomic statement handles first-time inserts and payload replacement
+    // without a check-then-insert race or an absent-row gap lock.
+    await db.$executeRaw`
+        INSERT INTO ojs_sync_jobs
+            (action, target_type, target_id, payload, status, pending_key, created_by, created_at, updated_at)
+        VALUES
+            (${input.action}, ${input.targetType}, ${input.targetId}, ${payload}, 'pending', ${key}, ${input.createdBy ?? null}, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            payload = VALUES(payload),
+            attempts = 0,
+            last_error = NULL,
+            next_attempt_at = CURRENT_TIMESTAMP(3),
+            created_by = COALESCE(VALUES(created_by), created_by),
+            completed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP(3)
+    `
+    const rows = await db.$queryRaw<Array<{ id: bigint }>>`SELECT LAST_INSERT_ID() AS id`
+    const id = rows[0]?.id
+    if (id === undefined) throw new Error(`Could not queue OJS sync job for ${key}`)
+    return db.ojsSyncJob.findUniqueOrThrow({ where: { id: BigInt(id) } })
 }
 
 /** pending -> running. False when the job is not pending or the target already has a running job. */

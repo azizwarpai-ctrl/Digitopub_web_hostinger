@@ -1,4 +1,5 @@
 import { prisma } from "@/src/lib/db/config"
+import { withDeadlockRetry } from "@/src/lib/db/deadlock-retry"
 import {
   JOB_SET_JOURNAL_SPECIALIZATION,
   enqueueSyncJob,
@@ -57,10 +58,13 @@ export async function createSpecialization(input: { name: string; sort_order?: n
   })
 }
 
-/** The canonical active name for `name`, or a 400. Used by journal create too. */
-export async function requireActiveSpecialization(name: string): Promise<string> {
-  const spec = await findByName(name)
-  if (!spec || !spec.is_active) throw new SpecializationError(`"${name}" is not an active specialization`, 400)
+/** Lock and return the canonical active name for `name`, or a 400. */
+export async function requireActiveSpecialization(name: string, db: Db): Promise<string> {
+  const rows = await db.$queryRaw<Array<{ name: string }>>`
+    SELECT name FROM journal_specializations WHERE name = ${name.trim()} AND is_active = TRUE FOR UPDATE
+  `
+  const spec = rows[0]
+  if (!spec) throw new SpecializationError(`"${name}" is not an active specialization`, 400)
   return spec.name
 }
 
@@ -72,7 +76,7 @@ export async function requireActiveSpecialization(name: string): Promise<string>
  * The durable default used for newly discovered journals cannot be retired.
  */
 export async function updateSpecialization(id: bigint, input: SpecializationUpdate, actorAdminId: bigint | null) {
-  const { updated, affected, jobs } = await prisma.$transaction(async (tx) => {
+  const { updated, affected, jobs } = await withDeadlockRetry(async (tx) => {
     const specRows = await tx.$queryRaw<Array<{ name: string; is_default: boolean | number }>>`
       SELECT name, is_default FROM journal_specializations WHERE id = ${id} FOR UPDATE
     `
@@ -115,19 +119,23 @@ export async function updateSpecialization(id: bigint, input: SpecializationUpda
 
 /** Set a journal's specialization from the active list, then sync it to OJS. */
 export async function setJournalSpecialization(journalId: bigint, name: string, actorAdminId: bigint | null) {
-  const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, ojs_id: true } })
-  if (!journal) throw new SpecializationError("Journal not found", 404)
-  const canonical = await requireActiveSpecialization(name)
+  const { canonical, journal, job } = await withDeadlockRetry(async (tx) => {
+    const canonical = await requireActiveSpecialization(name, tx)
+    const journalRows = await tx.$queryRaw<Array<{ ojs_id: string | null }>>`
+      SELECT ojs_id FROM journals WHERE id = ${journalId} FOR UPDATE
+    `
+    const journal = journalRows[0]
+    if (!journal) throw new SpecializationError("Journal not found", 404)
 
-  const job = await prisma.$transaction(async (tx) => {
     await tx.journal.update({ where: { id: journalId }, data: { field: canonical } })
-    return journal.ojs_id ? queue(tx, journal.id, journal.ojs_id, canonical, actorAdminId) : null
+    const job = journal.ojs_id ? await queue(tx, journalId, journal.ojs_id, canonical, actorAdminId) : null
+    return { canonical, journal, job }
   })
 
   if (!job) return { journal_id: journalId.toString(), field: canonical, sync: notLinked() }
   // First attempt right away so the admin usually sees "synced" at once.
   await runSyncJob(job.id)
-  return { journal_id: journalId.toString(), field: canonical, sync: await getJournalSyncStatus(journal.id, journal.ojs_id) }
+  return { journal_id: journalId.toString(), field: canonical, sync: await getJournalSyncStatus(journalId, journal.ojs_id) }
 }
 
 /**
@@ -135,11 +143,10 @@ export async function setJournalSpecialization(journalId: bigint, name: string, 
  * the feature goes live, or after OJS was restored from a backup).
  */
 export async function pushAllSpecializationsToOjs(actorAdminId: bigint | null) {
-  const jobs = await prisma.$transaction(async (tx) => {
-    const journals = await tx.journal.findMany({
-      where: { ojs_id: { not: null } },
-      select: { id: true, ojs_id: true, field: true },
-    })
+  const jobs = await withDeadlockRetry(async (tx) => {
+    const journals = await tx.$queryRaw<Array<{ id: bigint; ojs_id: string; field: string }>>`
+      SELECT id, ojs_id, field FROM journals WHERE ojs_id IS NOT NULL ORDER BY id FOR UPDATE
+    `
     const queued: QueuedJob[] = []
     for (const j of journals) queued.push(await queue(tx, j.id, j.ojs_id!, j.field, actorAdminId))
     return queued
