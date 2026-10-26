@@ -9,6 +9,7 @@ import { normalizeOjsAssetUrl } from "@/src/features/ojs/utils/ojs-config"
 import { journalCreateSchema, journalUpdateSchema, journalIdParamSchema, journalSlugParamSchema } from "@/src/features/journals/schemas/journal-schema"
 import { hostingRequestRouter } from "./hosting-request-route"
 import { specializationRouter } from "./specialization-route"
+import { SpecializationError, requireActiveSpecialization } from "./specialization-service"
 import { resolveJournalRecord } from "./resolve-journal"
 
 const app = new Hono()
@@ -805,6 +806,13 @@ app.post("/", requireAdmin, zValidator("json", journalCreateSchema), async (c) =
       return c.json({ success: false, error: "Unauthorized" }, 401)
     }
     const data = c.req.valid("json")
+    let field: string
+    try {
+      field = await requireActiveSpecialization(data.field) // #234: only names from the managed list
+    } catch (error) {
+      if (error instanceof SpecializationError) return c.json({ success: false, error: error.message }, error.status)
+      throw error
+    }
     const journal = await prisma.journal.create({
       data: {
         title: data.title,
@@ -812,7 +820,7 @@ app.post("/", requireAdmin, zValidator("json", journalCreateSchema), async (c) =
         issn: data.issn || null,
         e_issn: data.e_issn || null,
         description: data.description || null,
-        field: data.field,
+        field,
         publisher: data.publisher || null,
         editor_in_chief: data.editor_in_chief || null,
         frequency: data.frequency || null,

@@ -4,7 +4,9 @@
 --     chosen from. Seeded with the old hardcoded form list, "General Science"
 --     (what OJS sync assigns), and every value journals already use, so no
 --     existing journal points at a missing name.
---   * ojs_sync_jobs: outbox for writes to OJS (save first, push later).
+--   * ojs_sync_jobs: outbox for writes to OJS (save first, push later). The
+--     unique pending_key / running_key allow at most one pending and one
+--     running job per target.
 --   * audit_ojs_writes: orcid/ojs_user_id become optional and rows can name
 --     any target plus its value before and after the write.
 -- Generated: 2026-10-26
@@ -43,6 +45,8 @@ CREATE TABLE `ojs_sync_jobs` (
     `target_id` VARCHAR(64) NOT NULL,
     `payload` JSON NOT NULL,
     `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+    `pending_key` VARCHAR(200) NULL,
+    `running_key` VARCHAR(200) NULL,
     `attempts` INTEGER NOT NULL DEFAULT 0,
     `last_error` TEXT NULL,
     `next_attempt_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -51,6 +55,8 @@ CREATE TABLE `ojs_sync_jobs` (
     `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `completed_at` DATETIME(3) NULL,
 
+    UNIQUE INDEX `ojs_sync_jobs_pending_key_key`(`pending_key`),
+    UNIQUE INDEX `ojs_sync_jobs_running_key_key`(`running_key`),
     INDEX `ojs_sync_jobs_status_next_attempt_at_idx`(`status`, `next_attempt_at`),
     INDEX `ojs_sync_jobs_action_target_type_target_id_idx`(`action`, `target_type`, `target_id`),
     PRIMARY KEY (`id`)

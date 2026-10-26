@@ -35,6 +35,10 @@ vi.mock('@/src/lib/db/config', () => ({
             findUnique: vi.fn(),
             create: vi.fn(),
         },
+        // #234: journal create validates `field` against the managed list.
+        journalSpecialization: {
+            findFirst: vi.fn().mockResolvedValue({ id: BigInt(1), name: 'CS', is_active: true }),
+        },
         journal: {
             findMany: vi.fn().mockResolvedValue([]),
             findUnique: vi.fn().mockResolvedValue(null),
@@ -139,6 +143,7 @@ describe('Security & Authorization Tests', () => {
                 status: 'active', created_at: new Date(), created_by: BigInt(1),
             }
             vi.mocked(prisma.journal.create).mockResolvedValue(mockJournal as any)
+            vi.mocked(prisma.journalSpecialization.findFirst).mockResolvedValue({ id: BigInt(1), name: 'CS', is_active: true } as any)
 
             const res = await app.request('/api/journals', {
                 method: 'POST',

@@ -62,6 +62,14 @@ describe("OJS user bridge client (#234)", () => {
         expect(result).toMatchObject({ ok: false, status, error: "nope", retryable })
     })
 
+    it("reports a redirect instead of following it (a followed 301 turns the POST into a GET)", async () => {
+        fetchMock.mockResolvedValue(new Response(null, { status: 301, headers: { location: "https://journals.digitopub.com/ojs-user-bridge.php" } }))
+        const result = await postToUserBridge({ action: "x" })
+        expect(fetchMock.mock.calls[0][1].redirect).toBe("manual")
+        expect(result).toMatchObject({ ok: false, status: 301, retryable: true })
+        expect(result.ok === false && result.error).toContain("journals.digitopub.com")
+    })
+
     it("treats network errors as retryable", async () => {
         fetchMock.mockRejectedValue(new Error("ECONNREFUSED"))
         expect(await postToUserBridge({})).toMatchObject({ ok: false, status: null, retryable: true, error: "ECONNREFUSED" })
@@ -127,10 +135,9 @@ describe("setJournalSpecializationInOjsWithAudit (#234)", () => {
         expect(hoisted.auditUpdate.mock.calls[0][0].data).toMatchObject({ success: false, error: "HTTP 503: down" })
     })
 
-    it("still returns the outcome when resolving the audit row fails", async () => {
+    it("does not report success when resolving the audit row fails", async () => {
         fetchMock.mockResolvedValue(answer(200, { success: true, before: null, after: "Dentistry" }))
         hoisted.auditUpdate.mockRejectedValue(new Error("db gone"))
-        const result = await setJournalSpecializationInOjsWithAudit({ ojsJournalId: 10, value: "Dentistry" })
-        expect(result.success).toBe(true)
+        await expect(setJournalSpecializationInOjsWithAudit({ ojsJournalId: 10, value: "Dentistry" })).rejects.toThrow("db gone")
     })
 })

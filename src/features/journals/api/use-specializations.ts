@@ -102,6 +102,25 @@ export function useGetJournalSpecialization(journalId: string) {
       return (await unwrap<JournalSpecializationDetail>(res, "Failed to load journal")).data
     },
     enabled: /^\d+$/.test(journalId),
+    refetchInterval: (query) => query.state.data?.sync.state === "pending" ? 15_000 : false,
+  })
+}
+
+/** Re-send every linked journal's specialization to OJS (go-live backfill). */
+export function usePushAllSpecializations() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<{ queued: number; synced: number; pending: number; failed: number }> => {
+      const res = await client.journals.specializations["push-all"].$post()
+      return (await unwrap<{ queued: number; synced: number; pending: number; failed: number }>(res, "Failed to push to OJS")).data
+    },
+    onSuccess: ({ queued, synced, pending, failed }) => {
+      const detail = `${synced} synced` + (pending ? `, ${pending} will retry` : "") + (failed ? `, ${failed} failed` : "")
+      if (pending || failed) toast.warning(`Sent ${queued} journals to OJS: ${detail}`)
+      else toast.success(`Sent ${queued} journals to OJS: ${detail}`)
+      invalidateAll(queryClient)
+    },
+    onError: (error: Error) => toast.error(error.message),
   })
 }
 
@@ -144,7 +163,7 @@ export function useUpdateSpecialization() {
         const n = result.journals_updated
         toast.success(
           n > 0
-            ? `Renamed; ${n} journal${n === 1 ? "" : "s"} updated and re-synced to OJS`
+            ? `Renamed; ${n} journal${n === 1 ? "" : "s"} updated; OJS sync queued`
             : "Renamed; no journals were using this name"
         )
       } else {

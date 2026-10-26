@@ -11,15 +11,18 @@ import { prisma } from "@/src/lib/db/config"
  * explicit release, which also throttles rapid retries after completion.
  */
 export async function acquireJobLock(lockKey: string, windowMs: number): Promise<boolean> {
-    const now = new Date().toISOString()
-    const windowSec = Math.floor(windowMs / 1000)
+    const now = Date.now()
 
     await prisma.$executeRaw`
       INSERT INTO system_settings (setting_key, setting_value, description)
-      VALUES (${lockKey}, ${now}, 'Job lock — ISO timestamp of last attempt')
+      VALUES (${lockKey}, ${now}, 'Job lock — Unix epoch milliseconds of last attempt')
       ON DUPLICATE KEY UPDATE
         setting_value = CASE
-          WHEN UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(setting_value) >= ${windowSec}
+          WHEN (UNIX_TIMESTAMP(NOW()) * 1000) - CASE
+            WHEN TRIM(BOTH '"' FROM CAST(setting_value AS CHAR)) REGEXP '^[0-9]+$'
+            THEN CAST(TRIM(BOTH '"' FROM CAST(setting_value AS CHAR)) AS SIGNED)
+            ELSE 0
+          END >= ${windowMs}
           THEN ${now}
           ELSE setting_value
         END
@@ -29,5 +32,5 @@ export async function acquireJobLock(lockKey: string, windowMs: number): Promise
         where: { setting_key: lockKey },
         select: { setting_value: true },
     })
-    return (lockCheck?.setting_value as string | null) === now
+    return lockCheck?.setting_value === now
 }

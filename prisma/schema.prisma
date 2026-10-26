@@ -933,6 +933,7 @@ model JournalSpecialization {
   name       String   @unique @db.VarChar(100)
   sort_order Int      @default(0)
   is_active  Boolean  @default(true)
+  is_default Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
@@ -940,11 +941,13 @@ model JournalSpecialization {
   @@map("journal_specializations")
 }
 
-/// Outbox of pending writes to OJS. A change is saved in digitopub first,
-/// then pushed to OJS by this queue so an OJS outage never blocks an admin.
-/// At most one open job per (action, target): a newer save replaces the
-/// payload of the job that is still pending. Status values: pending,
-/// running, succeeded, failed.
+/// Outbox of pending writes to OJS. A change is saved in digitopub first
+/// (same transaction as the job), then pushed to OJS by this queue so an
+/// OJS outage never blocks an admin. Per (action, target) the database
+/// allows at most one pending and one running job: `pending_key` and
+/// `running_key` hold "action:target_type:target_id" while the job is in
+/// that state and are NULL otherwise. A newer save replaces the pending
+/// payload. Status values: pending, running, succeeded, failed, superseded.
 model OjsSyncJob {
   id              BigInt    @id @default(autoincrement())
   action          String    @db.VarChar(64)
@@ -952,6 +955,8 @@ model OjsSyncJob {
   target_id       String    @db.VarChar(64)
   payload         Json
   status          String    @default("pending") @db.VarChar(20)
+  pending_key     String?   @unique @db.VarChar(200)
+  running_key     String?   @unique @db.VarChar(200)
   attempts        Int       @default(0)
   last_error      String?   @db.Text
   next_attempt_at DateTime  @default(now())

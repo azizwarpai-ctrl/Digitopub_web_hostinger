@@ -452,10 +452,12 @@ function bridgeSetJournalSpecialization(PDO $pdo, array $payload): void
     }
 
     http_response_code(200);
+    // INVALID_UTF8_SUBSTITUTE: a legacy invalid value in `before` must not
+    // turn a committed write into an empty 200 (which the caller would retry).
     echo json_encode([
         'success' => true,
         'journal_id' => $journalId,
         'before' => $before,
         'after' => $value === '' ? null : $value,
-    ]);
+    ], JSON_INVALID_UTF8_SUBSTITUTE);
 }

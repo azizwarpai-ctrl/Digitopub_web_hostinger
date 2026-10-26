@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Check, Pencil, Plus, X } from "lucide-react"
+import { ArrowLeft, Check, Pencil, Plus, RefreshCw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   useCreateSpecialization,
   useGetManagedSpecializations,
+  usePushAllSpecializations,
   useUpdateSpecialization,
 } from "@/src/features/journals/api/use-specializations"
 
@@ -20,6 +21,7 @@ export default function SpecializationsPage() {
   const { data, isLoading, isError, error } = useGetManagedSpecializations()
   const create = useCreateSpecialization()
   const update = useUpdateSpecialization()
+  const pushAll = usePushAllSpecializations()
 
   const [newName, setNewName] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -54,12 +56,22 @@ export default function SpecializationsPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight">Journal Specializations</h1>
           <p className="text-muted-foreground mt-1">
-            Renaming updates every journal using that name and syncs it to OJS; retiring keeps existing journals but hides the name from choices.
+            Renaming updates every journal using that name and queues OJS sync; retiring hides a name from future choices. The default stays active for newly discovered journals.
           </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => pushAll.mutate()}
+          disabled={pushAll.isPending}
+          title="Send every journal's current specialization to OJS again"
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${pushAll.isPending ? "animate-spin" : ""}`} />
+          {pushAll.isPending ? "Sending…" : "Push all to OJS"}
+        </Button>
       </div>
 
       <Card>

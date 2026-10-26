@@ -15,6 +15,7 @@ import {
   getAllJournalSyncStatuses,
   getJournalSpecialization,
   listSpecializations,
+  pushAllSpecializationsToOjs,
   retryJournalSpecializationSync,
   setJournalSpecialization,
   updateSpecialization,
@@ -63,6 +64,18 @@ app.post("/specializations", requireAdmin, zValidator("json", specializationCrea
     return c.json({ success: true, data: serializeRecord(created), message: "Specialization added" }, 201)
   } catch (error) {
     return fail(c, error, "Failed to add specialization")
+  }
+})
+
+// ─── POST /journals/specializations/push-all — re-send every journal to OJS (admin) ──
+// Backfill at go-live (existing values were never sent) and recovery after an
+// OJS restore. Each journal is queued and attempted once; failures retry.
+app.post("/specializations/push-all", requireAdmin, async (c) => {
+  try {
+    const data = await pushAllSpecializationsToOjs(actorId(c))
+    return c.json({ success: true, data, message: `Queued ${data.queued} journals for OJS` })
+  } catch (error) {
+    return fail(c, error, "Failed to queue journals for OJS")
   }
 })
 

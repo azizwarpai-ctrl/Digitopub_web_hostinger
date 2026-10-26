@@ -73,6 +73,17 @@ export async function syncOjsJournals(
     const syncTime = new Date()
     const baseUrl = process.env.OJS_BASE_URL || ""
     const BATCH_SIZE = 10
+    let defaultFieldPromise: Promise<string> | null = null
+    const getDefaultField = () => {
+        defaultFieldPromise ??= prisma.journalSpecialization.findFirst({
+            where: { is_default: true, is_active: true },
+            select: { name: true },
+        }).then((spec) => {
+            if (!spec) throw new Error("No active default journal specialization is configured")
+            return spec.name
+        })
+        return defaultFieldPromise
+    }
 
     for (let i = 0; i < ojsJournals.length; i += BATCH_SIZE) {
         const batch = ojsJournals.slice(i, i + BATCH_SIZE)
@@ -116,7 +127,7 @@ export async function syncOjsJournals(
                             ojs_id: String(journal.journal_id),
                             title: journal.name || journal.path,
                             description: journal.description || null,
-                            field: "General Science",
+                            field: await getDefaultField(),
                             cover_image_url: journal.thumbnail_url || null,
                             issn: journal.issn?.trim() || null,
                             e_issn: journal.e_issn?.trim() || null,

@@ -3,6 +3,7 @@ import {
   JOB_SET_JOURNAL_SPECIALIZATION,
   enqueueSyncJob,
   getLatestSyncJob,
+  getLatestSyncJobsByTarget,
   retryLatestSyncJob,
   runSyncJob,
 } from "@/src/features/ojs/server/ojs-sync-jobs"
@@ -15,7 +16,8 @@ import type {
 /**
  * Journal specialization (#234). Journal.field holds the chosen name; the
  * names come from journal_specializations. Every change to a linked journal
- * (one with an ojs_id) is queued for OJS and attempted once immediately.
+ * (one with an ojs_id) queues an OJS sync job in the same transaction as the
+ * change, then attempts it once right away.
  */
 
 export class SpecializationError extends Error {
@@ -25,6 +27,9 @@ export class SpecializationError extends Error {
 }
 
 const TARGET = "journal"
+
+type Db = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+type QueuedJob = Awaited<ReturnType<typeof enqueueSyncJob>>
 
 export async function listSpecializations(opts: { includeInactive: boolean }): Promise<SpecializationItem[]> {
   const [specs, usage] = await Promise.all([
@@ -52,40 +57,59 @@ export async function createSpecialization(input: { name: string; sort_order?: n
   })
 }
 
+/** The canonical active name for `name`, or a 400. Used by journal create too. */
+export async function requireActiveSpecialization(name: string): Promise<string> {
+  const spec = await findByName(name)
+  if (!spec || !spec.is_active) throw new SpecializationError(`"${name}" is not an active specialization`, 400)
+  return spec.name
+}
+
 /**
  * Rename, reorder or retire a specialization. A rename rewrites Journal.field
- * on every journal that uses the old name and queues an OJS sync for each
- * linked one. Retiring keeps existing journals as they are; the name just
- * can no longer be chosen.
+ * on every journal using the old name and queues an OJS sync for each linked
+ * one, all in one transaction; the OJS attempts then run in parallel.
+ * Retiring keeps existing journals as they are; the name can no longer be chosen.
+ * The durable default used for newly discovered journals cannot be retired.
  */
 export async function updateSpecialization(id: bigint, input: SpecializationUpdate, actorAdminId: bigint | null) {
-  const spec = await prisma.journalSpecialization.findUnique({ where: { id } })
-  if (!spec) throw new SpecializationError("Specialization not found", 404)
+  const { updated, affected, jobs } = await prisma.$transaction(async (tx) => {
+    const specRows = await tx.$queryRaw<Array<{ name: string; is_default: boolean | number }>>`
+      SELECT name, is_default FROM journal_specializations WHERE id = ${id} FOR UPDATE
+    `
+    const spec = specRows[0]
+    if (!spec) throw new SpecializationError("Specialization not found", 404)
+    if (spec.is_default && input.is_active === false) {
+      throw new SpecializationError("The default specialization cannot be retired", 400)
+    }
 
-  const renamed = input.name !== undefined && input.name !== spec.name
-  if (renamed) {
-    const clash = await findByName(input.name!)
-    if (clash && clash.id !== id) throw new SpecializationError(`"${clash.name}" already exists`, 409)
-  }
+    const renamed = input.name !== undefined && input.name !== spec.name
+    if (renamed) {
+      const clash = await tx.journalSpecialization.findFirst({ where: { name: input.name!.trim() } })
+      if (clash && clash.id !== id) throw new SpecializationError(`"${clash.name}" already exists`, 409)
+    }
 
-  const affected = renamed
-    ? await prisma.journal.findMany({ where: { field: spec.name }, select: { id: true, ojs_id: true } })
-    : []
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.journalSpecialization.update({
+    // Locking reads serialize concurrent renames and rename-versus-journal
+    // updates, so every queued payload comes from the committed cascade.
+    const affected = renamed
+      ? await tx.$queryRaw<Array<{ id: bigint; ojs_id: string | null }>>`
+          SELECT id, ojs_id FROM journals WHERE field = ${spec.name} FOR UPDATE
+        `
+      : []
+    const updated = await tx.journalSpecialization.update({
       where: { id },
       data: { name: input.name, sort_order: input.sort_order, is_active: input.is_active },
     })
     if (renamed) {
       await tx.journal.updateMany({ where: { field: spec.name }, data: { field: input.name! } })
     }
-    return row
+    const jobs: QueuedJob[] = []
+    for (const journal of affected) {
+      if (journal.ojs_id) jobs.push(await queue(tx, journal.id, journal.ojs_id, updated.name, actorAdminId))
+    }
+    return { updated, affected, jobs }
   })
 
-  for (const journal of affected) {
-    if (journal.ojs_id) await queueAndAttempt(journal.id, journal.ojs_id, updated.name, actorAdminId)
-  }
+  await attemptAll(jobs)
   return { specialization: updated, journalsUpdated: affected.length }
 }
 
@@ -93,25 +117,51 @@ export async function updateSpecialization(id: bigint, input: SpecializationUpda
 export async function setJournalSpecialization(journalId: bigint, name: string, actorAdminId: bigint | null) {
   const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, ojs_id: true } })
   if (!journal) throw new SpecializationError("Journal not found", 404)
+  const canonical = await requireActiveSpecialization(name)
 
-  const spec = await findByName(name)
-  if (!spec || !spec.is_active) throw new SpecializationError(`"${name}" is not an active specialization`, 400)
+  const job = await prisma.$transaction(async (tx) => {
+    await tx.journal.update({ where: { id: journalId }, data: { field: canonical } })
+    return journal.ojs_id ? queue(tx, journal.id, journal.ojs_id, canonical, actorAdminId) : null
+  })
 
-  await prisma.journal.update({ where: { id: journalId }, data: { field: spec.name } })
-
-  const sync = journal.ojs_id
-    ? await queueAndAttempt(journal.id, journal.ojs_id, spec.name, actorAdminId)
-    : notLinked()
-  return { journal_id: journalId.toString(), field: spec.name, sync }
+  if (!job) return { journal_id: journalId.toString(), field: canonical, sync: notLinked() }
+  // First attempt right away so the admin usually sees "synced" at once.
+  await runSyncJob(job.id)
+  return { journal_id: journalId.toString(), field: canonical, sync: await getJournalSyncStatus(journal.id, journal.ojs_id) }
 }
 
 /**
- * One journal by its numeric digitopub id, for the admin edit page. Not
- * resolveJournalRecord(): that tries ojs_id before the numeric id, and in
- * production digitopub ids and OJS ids differ for some journals (id 3 has
- * ojs_id 4), so it can return a different journal than the one clicked.
+ * Queue every linked journal's current specialization for OJS (backfill when
+ * the feature goes live, or after OJS was restored from a backup).
  */
+export async function pushAllSpecializationsToOjs(actorAdminId: bigint | null) {
+  const jobs = await prisma.$transaction(async (tx) => {
+    const journals = await tx.journal.findMany({
+      where: { ojs_id: { not: null } },
+      select: { id: true, ojs_id: true, field: true },
+    })
+    const queued: QueuedJob[] = []
+    for (const j of journals) queued.push(await queue(tx, j.id, j.ojs_id!, j.field, actorAdminId))
+    return queued
+  })
+  await attemptAll(jobs)
+
+  const statuses = await getAllJournalSyncStatuses()
+  const counts = { queued: jobs.length, synced: 0, pending: 0, failed: 0 }
+  for (const job of jobs) {
+    const state = statuses[job.target_id]?.state
+    if (state === "synced") counts.synced++
+    else if (state === "failed") counts.failed++
+    else counts.pending++
+  }
+  return counts
+}
+
+/** One journal by its numeric digitopub id, for the admin edit page. */
 export async function getJournalSpecialization(journalId: bigint) {
+  // Not resolveJournalRecord(): that tries ojs_id before the numeric id, and
+  // in production digitopub ids and OJS ids differ for some journals (id 3
+  // has ojs_id 4), so it can return a different journal than the one clicked.
   const journal = await prisma.journal.findUnique({
     where: { id: journalId },
     select: { id: true, title: true, field: true, ojs_id: true, ojs_path: true },
@@ -131,10 +181,8 @@ export async function retryJournalSpecializationSync(journalId: bigint) {
   const journal = await prisma.journal.findUnique({ where: { id: journalId }, select: { id: true, ojs_id: true } })
   if (!journal) throw new SpecializationError("Journal not found", 404)
   if (!journal.ojs_id) return notLinked()
-
-  const job = await retryLatestSyncJob(JOB_SET_JOURNAL_SPECIALIZATION, TARGET, journalId.toString())
-  if (job) await runSyncJob(job.id)
-  return getJournalSyncStatus(journalId, journal.ojs_id)
+  await retryLatestSyncJob(JOB_SET_JOURNAL_SPECIALIZATION, TARGET, journalId.toString())
+  return getJournalSyncStatus(journal.id, journal.ojs_id)
 }
 
 export async function getJournalSyncStatus(journalId: bigint, ojsId: string | null): Promise<SpecializationSyncStatus> {
@@ -144,29 +192,30 @@ export async function getJournalSyncStatus(journalId: bigint, ojsId: string | nu
 
 /** Latest sync state for every journal that has one, keyed by journal id. */
 export async function getAllJournalSyncStatuses(): Promise<Record<string, SpecializationSyncStatus>> {
-  const jobs = await prisma.ojsSyncJob.findMany({
-    where: { action: JOB_SET_JOURNAL_SPECIALIZATION, target_type: TARGET },
-    orderBy: { id: "desc" },
-  })
-  const result: Record<string, SpecializationSyncStatus> = {}
-  for (const job of jobs) {
-    if (!(job.target_id in result)) result[job.target_id] = toStatus(job)
-  }
-  return result
+  const jobs = await getLatestSyncJobsByTarget(JOB_SET_JOURNAL_SPECIALIZATION, TARGET)
+  return Object.fromEntries(jobs.map((job) => [job.target_id, toStatus(job)]))
 }
 
-async function queueAndAttempt(journalId: bigint, ojsId: string, value: string, actorAdminId: bigint | null) {
-  const job = await enqueueSyncJob({
-    action: JOB_SET_JOURNAL_SPECIALIZATION,
-    targetType: TARGET,
-    targetId: journalId.toString(),
-    payload: { ojs_journal_id: Number(ojsId), value },
-    createdBy: actorAdminId,
-  })
-  // First attempt right away so the admin usually sees "synced" at once; on
-  // failure the job stays queued for the cron drain.
-  const after = await runSyncJob(job.id)
-  return toStatus(after ?? job)
+function queue(db: Db, journalId: bigint, ojsId: string, value: string, actorAdminId: bigint | null) {
+  return enqueueSyncJob(
+    {
+      action: JOB_SET_JOURNAL_SPECIALIZATION,
+      targetType: TARGET,
+      targetId: journalId.toString(),
+      payload: { ojs_journal_id: Number(ojsId), value },
+      createdBy: actorAdminId,
+    },
+    db
+  )
+}
+
+/**
+ * One immediate attempt per job, in parallel: each targets a different
+ * journal, and the bridge call has its own 10 s timeout, so a bulk change
+ * waits ~10 s at worst instead of 10 s per journal. Failures stay queued.
+ */
+async function attemptAll(jobs: QueuedJob[]) {
+  await Promise.allSettled(jobs.map((job) => runSyncJob(job.id)))
 }
 
 async function findByName(name: string) {

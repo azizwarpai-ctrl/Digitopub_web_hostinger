@@ -188,14 +188,10 @@ export async function setJournalSpecializationInOjsWithAudit(
   return { success: false, auditId: auditRow.id, error, retryable: result.retryable }
 }
 
-/** Resolve an audit row; a failure here is logged, never thrown. */
+/** Resolve an audit row; callers must not report success if this fails. */
 async function recordOutcome(
   id: bigint,
   data: { success: boolean; resolved_at: Date; error?: string; before_value?: string | null; after_value?: string | null }
 ): Promise<void> {
-  try {
-    await prisma.auditOjsWrite.update({ where: { id }, data })
-  } catch (err) {
-    console.error(`[ojs-write-guard] failed to resolve audit row ${id}:`, err)
-  }
+  await prisma.auditOjsWrite.update({ where: { id }, data })
 }

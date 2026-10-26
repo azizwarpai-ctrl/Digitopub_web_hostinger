@@ -19,6 +19,7 @@ const svc = vi.hoisted(() => ({
   retryJournalSpecializationSync: vi.fn(),
   getAllJournalSyncStatuses: vi.fn(),
   getJournalSpecialization: vi.fn(),
+  pushAllSpecializationsToOjs: vi.fn(),
 }))
 
 vi.mock("@/src/features/journals/server/specialization-service", async () => {
@@ -160,6 +161,16 @@ describe("journal specialization routes (#234)", () => {
     expect(res.status).toBe(200)
     expect(svc.getJournalSpecialization).toHaveBeenCalledWith(3n)
     expect((await res.json()).data).toMatchObject({ journal_id: "3", ojs_id: "4" })
+  })
+
+  it("pushes all journals to OJS (admin only)", async () => {
+    expect((await app().request("/journals/specializations/push-all", { method: "POST" })).status).toBe(401)
+    mockSession = admin
+    svc.pushAllSpecializationsToOjs.mockResolvedValue({ queued: 13, synced: 12, pending: 1, failed: 0 })
+    const res = await app().request("/journals/specializations/push-all", { method: "POST" })
+    expect(res.status).toBe(200)
+    expect(svc.pushAllSpecializationsToOjs).toHaveBeenCalledWith(3n)
+    expect((await res.json()).data).toEqual({ queued: 13, synced: 12, pending: 1, failed: 0 })
   })
 
   it("retries the OJS sync for a journal", async () => {

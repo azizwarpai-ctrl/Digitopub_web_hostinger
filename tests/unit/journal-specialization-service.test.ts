@@ -5,29 +5,32 @@ const h = vi.hoisted(() => ({
   specFindFirst: vi.fn(),
   specFindUnique: vi.fn(),
   specCreate: vi.fn(),
-  specUpdate: vi.fn(),
+  txSpecUpdate: vi.fn(),
+  txQueryRaw: vi.fn(),
   journalFindUnique: vi.fn(),
-  journalFindMany: vi.fn(),
-  journalUpdate: vi.fn(),
-  journalUpdateMany: vi.fn(),
   journalGroupBy: vi.fn(),
-  jobFindMany: vi.fn(),
+  txJournalUpdate: vi.fn(),
+  txJournalFindMany: vi.fn(),
+  txJournalUpdateMany: vi.fn(),
   enqueue: vi.fn(),
   run: vi.fn(),
   latest: vi.fn(),
+  latestByTarget: vi.fn(),
   retry: vi.fn(),
 }))
 
+const tx = vi.hoisted(() => ({}))
+
 vi.mock("@/src/lib/db/config", () => {
-  const tx = {
-    journalSpecialization: { update: h.specUpdate },
-    journal: { updateMany: h.journalUpdateMany },
-  }
+  Object.assign(tx, {
+    $queryRaw: h.txQueryRaw,
+    journalSpecialization: { update: h.txSpecUpdate, findFirst: h.specFindFirst },
+    journal: { update: h.txJournalUpdate, findMany: h.txJournalFindMany, updateMany: h.txJournalUpdateMany },
+  })
   return {
     prisma: {
       journalSpecialization: { findMany: h.specFindMany, findFirst: h.specFindFirst, findUnique: h.specFindUnique, create: h.specCreate },
-      journal: { findUnique: h.journalFindUnique, findMany: h.journalFindMany, update: h.journalUpdate, groupBy: h.journalGroupBy },
-      ojsSyncJob: { findMany: h.jobFindMany },
+      journal: { findUnique: h.journalFindUnique, groupBy: h.journalGroupBy },
       $transaction: (fn: (t: typeof tx) => unknown) => fn(tx),
     },
   }
@@ -38,6 +41,7 @@ vi.mock("@/src/features/ojs/server/ojs-sync-jobs", () => ({
   enqueueSyncJob: h.enqueue,
   runSyncJob: h.run,
   getLatestSyncJob: h.latest,
+  getLatestSyncJobsByTarget: h.latestByTarget,
   retryLatestSyncJob: h.retry,
 }))
 
@@ -47,12 +51,15 @@ import {
   getAllJournalSyncStatuses,
   getJournalSpecialization,
   listSpecializations,
+  pushAllSpecializationsToOjs,
+  requireActiveSpecialization,
   setJournalSpecialization,
   updateSpecialization,
 } from "@/src/features/journals/server/specialization-service"
 
-const doneJob = (over: Record<string, unknown> = {}) => ({
+const job = (over: Record<string, unknown> = {}) => ({
   id: 1n,
+  target_id: "5",
   status: "succeeded",
   attempts: 1,
   last_error: null,
@@ -65,8 +72,10 @@ const doneJob = (over: Record<string, unknown> = {}) => ({
 describe("specialization-service (#234)", () => {
   beforeEach(() => {
     for (const fn of Object.values(h)) fn.mockReset()
-    h.enqueue.mockResolvedValue(doneJob({ status: "pending", completed_at: null }))
-    h.run.mockResolvedValue(doneJob())
+    h.enqueue.mockImplementation(async (input) => job({ id: BigInt(input.targetId), target_id: input.targetId, status: "pending" }))
+    h.run.mockResolvedValue(job())
+    h.latest.mockResolvedValue(job())
+    h.latestByTarget.mockResolvedValue([])
   })
 
   it("lists names with case-insensitive usage counts", async () => {
@@ -79,7 +88,6 @@ describe("specialization-service (#234)", () => {
       { id: "1", name: "General Science", sort_order: 0, is_active: true, usage_count: 8 },
       { id: "2", name: "Dentistry", sort_order: 20, is_active: true, usage_count: 0 },
     ])
-    expect(h.specFindMany.mock.calls[0][0].where).toEqual({ is_active: true })
   })
 
   it("refuses to add a name that already exists", async () => {
@@ -88,29 +96,32 @@ describe("specialization-service (#234)", () => {
     expect(h.specCreate).not.toHaveBeenCalled()
   })
 
+  it("requireActiveSpecialization returns the canonical name or a 400", async () => {
+    h.specFindFirst.mockResolvedValueOnce({ name: "Dentistry", is_active: true }).mockResolvedValueOnce({ name: "Uncategorized", is_active: false })
+    expect(await requireActiveSpecialization("dentistry")).toBe("Dentistry")
+    await expect(requireActiveSpecialization("Uncategorized")).rejects.toMatchObject({ status: 400 })
+  })
+
   describe("setJournalSpecialization", () => {
-    it("stores the canonical name and syncs a linked journal at once", async () => {
+    it("updates the field and queues the job in one transaction, then attempts it", async () => {
       h.journalFindUnique.mockResolvedValue({ id: 5n, ojs_id: "10" })
       h.specFindFirst.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true })
 
       const result = await setJournalSpecialization(5n, "dentistry", 3n)
 
-      expect(h.journalUpdate).toHaveBeenCalledWith({ where: { id: 5n }, data: { field: "Dentistry" } })
-      expect(h.enqueue).toHaveBeenCalledWith({
-        action: "set_journal_specialization",
-        targetType: "journal",
-        targetId: "5",
-        payload: { ojs_journal_id: 10, value: "Dentistry" },
-        createdBy: 3n,
-      })
-      expect(h.run).toHaveBeenCalledOnce()
-      expect(result).toMatchObject({ journal_id: "5", field: "Dentistry", sync: { state: "synced", attempts: 1 } })
+      expect(h.txJournalUpdate).toHaveBeenCalledWith({ where: { id: 5n }, data: { field: "Dentistry" } })
+      expect(h.enqueue).toHaveBeenCalledWith(
+        { action: "set_journal_specialization", targetType: "journal", targetId: "5", payload: { ojs_journal_id: 10, value: "Dentistry" }, createdBy: 3n },
+        tx
+      )
+      expect(h.run).toHaveBeenCalledWith(5n)
+      expect(result).toMatchObject({ journal_id: "5", field: "Dentistry", sync: { state: "synced" } })
     })
 
-    it("reports pending when the first attempt fails", async () => {
+    it("reports pending when the first attempt could not reach OJS", async () => {
       h.journalFindUnique.mockResolvedValue({ id: 5n, ojs_id: "10" })
       h.specFindFirst.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true })
-      h.run.mockResolvedValue(doneJob({ status: "pending", completed_at: null, last_error: "HTTP 503: down" }))
+      h.latest.mockResolvedValue(job({ status: "pending", completed_at: null, last_error: "HTTP 503: down" }))
       const result = await setJournalSpecialization(5n, "Dentistry", 3n)
       expect(result.sync).toMatchObject({ state: "pending", last_error: "HTTP 503: down" })
       expect(result.sync.next_attempt_at).not.toBeNull()
@@ -120,7 +131,7 @@ describe("specialization-service (#234)", () => {
       h.journalFindUnique.mockResolvedValue({ id: 5n, ojs_id: null })
       h.specFindFirst.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true })
       const result = await setJournalSpecialization(5n, "Dentistry", 3n)
-      expect(h.journalUpdate).toHaveBeenCalled()
+      expect(h.txJournalUpdate).toHaveBeenCalled()
       expect(h.enqueue).not.toHaveBeenCalled()
       expect(result.sync.state).toBe("not_linked")
     })
@@ -130,7 +141,7 @@ describe("specialization-service (#234)", () => {
       h.specFindFirst.mockResolvedValueOnce({ id: 9n, name: "Uncategorized", is_active: false }).mockResolvedValueOnce(null)
       await expect(setJournalSpecialization(5n, "Uncategorized", 3n)).rejects.toMatchObject({ status: 400 })
       await expect(setJournalSpecialization(5n, "Astrology", 3n)).rejects.toBeInstanceOf(SpecializationError)
-      expect(h.journalUpdate).not.toHaveBeenCalled()
+      expect(h.txJournalUpdate).not.toHaveBeenCalled()
     })
 
     it("404s an unknown journal", async () => {
@@ -140,34 +151,66 @@ describe("specialization-service (#234)", () => {
   })
 
   describe("updateSpecialization", () => {
-    it("renames across journals and re-syncs the linked ones only", async () => {
-      h.specFindUnique.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true })
+    it("locks the specialization and affected journals before cascading a rename", async () => {
+      h.txQueryRaw
+        .mockResolvedValueOnce([{ name: "Dentistry", is_default: false }])
+        .mockResolvedValueOnce([{ id: 5n, ojs_id: "10" }, { id: 6n, ojs_id: null }, { id: 7n, ojs_id: "11" }])
+      h.specFindUnique.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true, is_default: false })
       h.specFindFirst.mockResolvedValue(null)
-      h.journalFindMany.mockResolvedValue([{ id: 5n, ojs_id: "10" }, { id: 6n, ojs_id: null }])
-      h.specUpdate.mockResolvedValue({ id: 2n, name: "Dental Medicine", sort_order: 20, is_active: true })
+      h.txJournalFindMany.mockResolvedValue([{ id: 5n, ojs_id: "10" }, { id: 6n, ojs_id: null }, { id: 7n, ojs_id: "11" }])
+      h.txSpecUpdate.mockResolvedValue({ id: 2n, name: "Dental Medicine", sort_order: 20, is_active: true, is_default: false })
 
       const result = await updateSpecialization(2n, { name: "Dental Medicine" }, 3n)
 
-      expect(h.journalUpdateMany).toHaveBeenCalledWith({ where: { field: "Dentistry" }, data: { field: "Dental Medicine" } })
-      expect(h.enqueue).toHaveBeenCalledOnce()
-      expect(h.enqueue.mock.calls[0][0]).toMatchObject({ targetId: "5", payload: { ojs_journal_id: 10, value: "Dental Medicine" } })
-      expect(result.journalsUpdated).toBe(2)
+      expect(h.txQueryRaw).toHaveBeenCalledTimes(2)
+      expect(h.txQueryRaw.mock.calls[0][0].join(" ")).toContain("FOR UPDATE")
+      expect(h.txQueryRaw.mock.calls[1][0].join(" ")).toContain("FOR UPDATE")
+      expect(h.txJournalUpdateMany).toHaveBeenCalledWith({ where: { field: "Dentistry" }, data: { field: "Dental Medicine" } })
+      expect(h.enqueue.mock.calls.map(([input, db]) => [input.targetId, input.payload.value, db === tx])).toEqual([
+        ["5", "Dental Medicine", true],
+        ["7", "Dental Medicine", true],
+      ])
+      expect(h.run.mock.calls.map(([id]) => id)).toEqual([5n, 7n])
+      expect(result.journalsUpdated).toBe(3)
     })
 
     it("retires without touching journals or OJS", async () => {
-      h.specFindUnique.mockResolvedValue({ id: 9n, name: "Uncategorized", is_active: true })
-      h.specUpdate.mockResolvedValue({ id: 9n, name: "Uncategorized", is_active: false })
+      h.txQueryRaw.mockResolvedValueOnce([{ name: "Uncategorized", is_default: false }])
+      h.txSpecUpdate.mockResolvedValue({ id: 9n, name: "Uncategorized", is_active: false, is_default: false })
       await updateSpecialization(9n, { is_active: false }, 3n)
-      expect(h.journalUpdateMany).not.toHaveBeenCalled()
+      expect(h.txJournalUpdateMany).not.toHaveBeenCalled()
       expect(h.enqueue).not.toHaveBeenCalled()
     })
 
+    it("refuses to retire the default used for newly discovered journals", async () => {
+      h.txQueryRaw.mockResolvedValueOnce([{ name: "General Science", is_default: true }])
+      await expect(updateSpecialization(1n, { is_active: false }, 3n)).rejects.toMatchObject({ status: 400 })
+      expect(h.txSpecUpdate).not.toHaveBeenCalled()
+    })
+
     it("refuses a rename onto another existing name", async () => {
-      h.specFindUnique.mockResolvedValue({ id: 2n, name: "Dentistry", is_active: true })
+      h.txQueryRaw.mockResolvedValueOnce([{ name: "Dentistry", is_default: false }])
       h.specFindFirst.mockResolvedValue({ id: 3n, name: "Medicine" })
       await expect(updateSpecialization(2n, { name: "medicine" }, 3n)).rejects.toMatchObject({ status: 409 })
-      expect(h.specUpdate).not.toHaveBeenCalled()
+      expect(h.txSpecUpdate).not.toHaveBeenCalled()
     })
+  })
+
+  it("pushes every linked journal's current value to OJS and counts the outcome", async () => {
+    h.txJournalFindMany.mockResolvedValue([
+      { id: 5n, ojs_id: "10", field: "Dentistry" },
+      { id: 6n, ojs_id: "11", field: "General Science" },
+    ])
+    h.latestByTarget.mockResolvedValue([job({ target_id: "5" }), job({ target_id: "6", status: "pending" })])
+
+    const counts = await pushAllSpecializationsToOjs(3n)
+
+    expect(h.txJournalFindMany.mock.calls[0][0].where).toEqual({ ojs_id: { not: null } })
+    expect(h.enqueue.mock.calls.map(([input]) => input.payload)).toEqual([
+      { ojs_journal_id: 10, value: "Dentistry" },
+      { ojs_journal_id: 11, value: "General Science" },
+    ])
+    expect(counts).toEqual({ queued: 2, synced: 1, pending: 1, failed: 0 })
   })
 
   it("loads the edit-page journal by numeric id only (never via ojs_id)", async () => {
@@ -178,12 +221,8 @@ describe("specialization-service (#234)", () => {
     expect(detail).toMatchObject({ journal_id: "3", ojs_id: "4", sync: { state: "never" } })
   })
 
-  it("keeps only the latest job per journal for the status map", async () => {
-    h.jobFindMany.mockResolvedValue([
-      { ...doneJob({ id: 3n, status: "failed", last_error: "HTTP 404" }), target_id: "5" },
-      { ...doneJob({ id: 2n }), target_id: "5" },
-      { ...doneJob({ id: 1n }), target_id: "6" },
-    ])
+  it("builds the status map from the latest job per journal", async () => {
+    h.latestByTarget.mockResolvedValue([job({ target_id: "5", status: "failed", last_error: "HTTP 404" }), job({ target_id: "6" })])
     const map = await getAllJournalSyncStatuses()
     expect(map["5"].state).toBe("failed")
     expect(map["6"].state).toBe("synced")

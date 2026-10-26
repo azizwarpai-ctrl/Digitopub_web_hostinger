@@ -269,7 +269,14 @@ export async function postToUserBridge(body: Record<string, unknown>, timeoutMs 
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
             body: JSON.stringify(body),
             signal: controller.signal,
+            // A followed 301/302 turns the POST into a GET (the bridge then
+            // answers 405), so a redirect is reported as a config error.
+            redirect: "manual",
         });
+        if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get("location") ?? "another URL";
+            return { ok: false, status: response.status, error: `OJS user bridge URL redirects to ${location}; set OJS_USER_BRIDGE_URL to the final URL`, retryable: true };
+        }
         const text = await response.text();
         let data: Record<string, unknown> = {};
         try {
