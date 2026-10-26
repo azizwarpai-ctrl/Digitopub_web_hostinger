@@ -8,7 +8,7 @@ A comprehensive digital publishing platform for academic and scientific journals
 
 - **Journal Management**: Create, edit, and manage scientific journals
 - **Submission System**: Handle manuscript submissions with review workflow
-- **OJS Integration**: Read-only integration with Open Journal Systems database
+- **OJS Integration**: Read-only content synchronization plus guarded, audited writes for approved admin actions
 - **Admin Dashboard**: Comprehensive admin panel for managing content
 - **Automated Sync**: Periodic synchronization with OJS database
 - **MySQL Backend**: Production-ready MySQL database with optimized schema
@@ -117,6 +117,14 @@ The system operates across two strict boundaries:
 - **digitopub.com (Gateway)**: A purely stateless, read-only Next.js storefront for displaying journal content. It has no user login forms and stores no user sessions.
 - **submitmanager.com (OJS)**: The solitary identity provider and submission management interface. It owns all users, roles, and manuscript workflows.
 
+### Architecture diagram
+
+The primary content flow is **author → DigitoPub → SubmitManager/OJS → canonical OJS data → DigitoPub sync → public reader**. The read mirror is refreshed by scheduled full syncs and drift detection. Approved admin writes, such as specialization changes, use a separate audited user-bridge path with queued retries; specialization remains digitopub-owned and is not read back.
+
+[Download the interactive architecture diagram](docs/assets/diagrams/digitopub-submitmanager.html) (self-contained HTML with light/dark themes and export) · [PNG preview](docs/assets/diagrams/digitopub-submitmanager-preview.png)
+
+![DigitoPub and SubmitManager architecture, showing journal content and control flow between the two systems](docs/assets/diagrams/digitopub-submitmanager-preview.png)
+
 ### Authentication Model (amended by UIET-P1)
 
 digitopub now holds TWO independent identity systems:
@@ -152,14 +160,14 @@ Single Sign-On (SSO) for the registration path is still a **one-way token-based 
 
 - **NEVER** call `getSession()` or `jose.jwtVerify` in any public route (under `app/` excluding `app/admin/**`, or under `src/server/routes/`). The ESLint rule `no-restricted-imports` enforces this; CI greps as a backup.
 - **ALWAYS** use `getIdentity(request)` from `src/lib/identity-cookie.ts` for public-user identity. It is sibling to admin auth, never invokes it.
-- **NEVER** write to OJS outside of `writeOrcidToOjsWithAudit()` in `src/lib/ojs-write-guard.ts`. Every write produces an audit row.
+- **NEVER** write to OJS outside the guarded functions in `src/lib/ojs-write-guard.ts` (`writeOrcidToOjsWithAudit()` and `setJournalSpecializationInOjsWithAudit()`). Every write produces an audit row.
 - **ALWAYS** flag-gate new public-user surfaces behind `UIET_P1_ENABLED` until the rollout finishes.
 
 ### Common Mistakes
 
 - 🚫 **using `getSession()` in a public route**: that is the admin pathway. Use `getIdentity()`.
 - 🚫 **blocking submit behind identity**: submission flow is unchanged. The submit button never checks the identity cookie.
-- 🚫 **writing to OJS without the guard**: every write must go through `writeOrcidToOjsWithAudit()` so it lands in `audit_ojs_writes`.
+- 🚫 **writing to OJS without the guard**: every write must go through one of the audited functions in `src/lib/ojs-write-guard.ts` so it lands in `audit_ojs_writes`.
 
 ### Submission & Authentication Flow (Verified Architecture)
 
