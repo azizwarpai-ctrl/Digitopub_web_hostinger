@@ -5,23 +5,47 @@ import type { OjsJournal } from "../schemas/ojs-schema"
 export const JOURNALS_FINGERPRINT_KEY = "ojs_journals_fingerprint"
 
 /**
- * Order-independent fingerprint of the OJS journals table: row count plus the
- * sum of per-row CRC32 checksums over the fields the mirror cares about.
- * Detects additions, deletions, and enable/path edits in a single cheap
- * query — unlike the count-only comparison it replaced, which was blind to
- * deletions and edits. Sum-of-CRC32 avoids GROUP_CONCAT length limits and
- * needs no session variables.
+ * Versioned, order-independent fingerprint of the journal rows and every
+ * setting copied into the mirror. Sum-of-CRC32 avoids GROUP_CONCAT length
+ * limits and needs no session variables.
  */
 export async function computeOjsJournalsFingerprint(): Promise<string> {
     const { ojsQuery } = await import("./ojs-client")
-    const rows = await ojsQuery<{ c: number; s: string | number | null }>(
-        `SELECT COUNT(*) AS c,
-                COALESCE(SUM(CRC32(CONCAT(journal_id, ':', enabled, ':', path))), 0) AS s
-         FROM journals`
+    const rows = await ojsQuery<{
+        scope: "journals" | "settings"
+        c: number
+        s: string | number | null
+    }>(
+        `SELECT scope, c, s FROM (
+            SELECT 'journals' AS scope,
+                   COUNT(*) AS c,
+                   COALESCE(SUM(CRC32(CONCAT(journal_id, ':', enabled, ':', path, ':', primary_locale))), 0) AS s
+            FROM journals
+            UNION ALL
+            SELECT 'settings' AS scope,
+                   COUNT(*) AS c,
+                   COALESCE(SUM(CRC32(CONCAT(journal_id, ':', setting_name, ':', locale, ':', setting_value))), 0) AS s
+            FROM journal_settings
+            WHERE setting_name IN (
+                'name', 'description', 'homepageImage', 'journalThumbnail',
+                'printIssn', 'onlineIssn', 'publisherInstitution', 'abbreviation',
+                'contactName', 'aimsAndScope', 'authorGuidelines',
+                'publicationFee', 'submissionFee'
+            )
+        ) AS fingerprint_parts`
     )
-    const c = Number(rows?.[0]?.c ?? 0)
-    const s = String(rows?.[0]?.s ?? 0)
-    return `${c}:${s}`
+    const journal = rows.find((row) => row.scope === "journals")
+    const settings = rows.find((row) => row.scope === "settings")
+    if (!journal || !settings) {
+        throw new Error("Incomplete OJS journal fingerprint result")
+    }
+    return [
+        "v2",
+        Number(journal.c),
+        String(journal.s ?? 0),
+        Number(settings.c),
+        String(settings.s ?? 0),
+    ].join(":")
 }
 
 export async function getStoredJournalsFingerprint(): Promise<string | null> {
@@ -38,7 +62,7 @@ async function storeJournalsFingerprint(fingerprint: string): Promise<void> {
         create: {
             setting_key: JOURNALS_FINGERPRINT_KEY,
             setting_value: fingerprint,
-            description: "OJS journals table fingerprint at last successful sync",
+            description: "OJS journal and mirrored-setting fingerprint at last successful sync",
         },
         update: { setting_value: fingerprint },
     })
@@ -66,8 +90,9 @@ export interface SyncJournalsResult {
  */
 export async function syncOjsJournals(
     ojsJournals: OjsJournal[],
-    opts: { deactivateMissing?: boolean } = {}
+    opts: { deactivateMissing?: boolean; fingerprint?: string } = {}
 ): Promise<SyncJournalsResult> {
+    const fingerprint = opts.fingerprint ?? await computeOjsJournalsFingerprint()
     let synced = 0
     let errors = 0
     const deactivated: string[] = []
@@ -198,7 +223,7 @@ export async function syncOjsJournals(
     // means the next drift check triggers one redundant sync.
     if (errors === 0) {
         try {
-            await storeJournalsFingerprint(await computeOjsJournalsFingerprint())
+            await storeJournalsFingerprint(fingerprint)
         } catch (error) {
             console.warn("[OJS_SYNC] Failed to store journals fingerprint:", error)
         }

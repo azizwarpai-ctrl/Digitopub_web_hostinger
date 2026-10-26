@@ -29,10 +29,10 @@ let runningFullSyncPromise: Promise<void> | null = null;
 // stay stale until an external cron (/api/ojs/sync) or manual
 // `bun run ojs:sync` runs. The drift check below closes that gap: after
 // every public listing response, we compare a cheap fingerprint of the OJS
-// journals table (count + CRC32 sum over id/enabled/path) against the value
-// stored at last successful sync; on mismatch we fire a single-flight
-// background sync. Unlike the previous count-only comparison, this detects
-// deletions and edits, not just additions. Set OJS_DRIFT_FINGERPRINT=0 to
+// journal rows and mirrored settings against the value stored at last
+// successful sync; on mismatch we fire a single-flight background sync.
+// Unlike the previous count-only comparison, this detects deletions and
+// content edits, not just additions. Set OJS_DRIFT_FINGERPRINT=0 to
 // fall back to the legacy count-only comparison (kept for one release).
 // Throttled to avoid hammering the OJS DB.
 let lastOjsDriftCheckTs = 0;
@@ -81,6 +81,7 @@ function scheduleOjsDriftCheck(prismaTotal: number): void {
 
       let driftDetected: boolean;
       let driftReason: string;
+      let capturedFingerprint: string | undefined;
       if (process.env.OJS_DRIFT_FINGERPRINT === "0") {
         // Legacy additions-only comparison (fallback flag, one release).
         const rows = await ojsQuery<{ c: number }>("SELECT COUNT(*) AS c FROM journals");
@@ -93,6 +94,7 @@ function scheduleOjsDriftCheck(prismaTotal: number): void {
           computeOjsJournalsFingerprint(),
           getStoredJournalsFingerprint(),
         ]);
+        capturedFingerprint = current;
         driftDetected = current !== stored;
         driftReason = `fingerprint ${stored ?? "<none>"} -> ${current}`;
       }
@@ -107,7 +109,10 @@ function scheduleOjsDriftCheck(prismaTotal: number): void {
           const { withSyncRun } = await import("@/src/features/ojs/server/sync-runs");
           const result = await withSyncRun("ojs_journals_sync", "drift", async () => {
             const ojsData = await fetchFromDatabase(true);
-            const syncResult = await syncOjsJournals(ojsData, { deactivateMissing: true });
+            const syncResult = await syncOjsJournals(ojsData, {
+              deactivateMissing: true,
+              fingerprint: capturedFingerprint,
+            });
             return {
               status: syncResult.errors > 0 ? ("partial" as const) : ("success" as const),
               stats: { ...syncResult },
@@ -268,10 +273,15 @@ app.get("/:id", zValidator("param", journalSlugParamSchema), async (c) => {
               const { isOjsConfigured } = await import("@/src/features/ojs/server/ojs-client");
               if (isOjsConfigured()) {
                 const { fetchFromDatabase } = await import("@/src/features/ojs/server/ojs-service");
-                const { syncOjsJournals } = await import("@/src/features/ojs/server/sync-ojs-journals");
+                const { computeOjsJournalsFingerprint, syncOjsJournals } = await import("@/src/features/ojs/server/sync-ojs-journals");
                 console.time(`[Journal Detail API] Background Sync "${id}"`);
+                // Capture before the fetch; parallelizing can falsely mark newer OJS content as synced.
+                const fingerprint = await computeOjsJournalsFingerprint();
+                if (!fingerprint) {
+                  throw new Error("Failed to capture OJS journal fingerprint");
+                }
                 const ojsData = await fetchFromDatabase(true);
-                await syncOjsJournals(ojsData);
+                await syncOjsJournals(ojsData, { fingerprint });
                 console.timeEnd(`[Journal Detail API] Background Sync "${id}"`);
               }
             } catch (syncError) {

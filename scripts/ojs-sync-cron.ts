@@ -20,7 +20,7 @@
 import { prisma } from '../src/lib/db/config';
 import { fetchFromDatabase } from '../src/features/ojs/server/ojs-service';
 import { closeOjsPool, ojsHealthCheck } from '../src/features/ojs/server/ojs-client';
-import { syncOjsJournals } from '../src/features/ojs/server/sync-ojs-journals';
+import { computeOjsJournalsFingerprint, syncOjsJournals } from '../src/features/ojs/server/sync-ojs-journals';
 import { refreshOjsJournalSnapshots } from '../src/features/ojs/server/ojs-journal-snapshots';
 import { withSyncRun } from '../src/features/ojs/server/sync-runs';
 
@@ -51,12 +51,13 @@ async function main(): Promise<number> {
       // 2. Fetch the FULL journal set (incl. disabled) so disabled journals
       //    get marked inactive and vanished journals get soft-deleted.
       console.log('📚 Fetching journals from OJS...');
+      const fingerprint = await computeOjsJournalsFingerprint();
       const ojsJournals = await fetchFromDatabase(true);
       console.log(`   Found ${ojsJournals.length} journals`);
 
       // 3. Sync to internal database
       console.log('🔄 Synchronizing data...');
-      const syncResult = await syncOjsJournals(ojsJournals, { deactivateMissing: true });
+      const syncResult = await syncOjsJournals(ojsJournals, { deactivateMissing: true, fingerprint });
 
       // 4. Refresh per-journal aggregate snapshots (watermark-gated)
       console.log('📸 Refreshing journal snapshots...');
