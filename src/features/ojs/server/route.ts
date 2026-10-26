@@ -111,9 +111,16 @@ app.get("/sync", async (c) => {
         const syncResult = await withSyncRun("ojs_journals_sync", "http", async () => {
             // Sync everything, including disabled journals, so they get marked
             // inactive; deactivateMissing soft-deletes journals removed in OJS.
+            // Capture before the fetch; parallelizing can falsely mark newer OJS content as synced.
             const fingerprint = await computeOjsJournalsFingerprint()
+            if (!fingerprint) {
+                throw new Error("Failed to capture OJS journal fingerprint")
+            }
             const journals = await fetchFromDatabase(true)
             const result = await syncOjsJournals(journals, { deactivateMissing: true, fingerprint })
+            if (result.errors > 0) {
+                console.warn(`[OJS_SYNC] ${result.errors} journal(s) failed; refreshing snapshots anyway`)
+            }
             const snapshots = await refreshOjsJournalSnapshots()
             return {
                 status: result.errors > 0 ? ("partial" as const) : ("success" as const),

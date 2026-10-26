@@ -275,7 +275,11 @@ app.get("/:id", zValidator("param", journalSlugParamSchema), async (c) => {
                 const { fetchFromDatabase } = await import("@/src/features/ojs/server/ojs-service");
                 const { computeOjsJournalsFingerprint, syncOjsJournals } = await import("@/src/features/ojs/server/sync-ojs-journals");
                 console.time(`[Journal Detail API] Background Sync "${id}"`);
+                // Capture before the fetch; parallelizing can falsely mark newer OJS content as synced.
                 const fingerprint = await computeOjsJournalsFingerprint();
+                if (!fingerprint) {
+                  throw new Error("Failed to capture OJS journal fingerprint");
+                }
                 const ojsData = await fetchFromDatabase(true);
                 await syncOjsJournals(ojsData, { fingerprint });
                 console.timeEnd(`[Journal Detail API] Background Sync "${id}"`);
