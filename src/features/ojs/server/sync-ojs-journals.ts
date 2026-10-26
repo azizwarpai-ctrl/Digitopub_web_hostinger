@@ -1,4 +1,5 @@
 import { prisma } from "@/src/lib/db/config"
+import { withDeadlockRetry } from "@/src/lib/db/deadlock-retry"
 import type { OjsJournal } from "../schemas/ojs-schema"
 
 export const JOURNALS_FINGERPRINT_KEY = "ojs_journals_fingerprint"
@@ -111,27 +112,37 @@ export async function syncOjsJournals(
                 }
 
                 try {
-                    return await prisma.journal.create({
-                        data: {
-                            ojs_id: String(journal.journal_id),
-                            title: journal.name || journal.path,
-                            description: journal.description || null,
-                            field: "General Science",
-                            cover_image_url: journal.thumbnail_url || null,
-                            issn: journal.issn?.trim() || null,
-                            e_issn: journal.e_issn?.trim() || null,
-                            publisher: journal.publisher || null,
-                            abbreviation: journal.abbreviation?.trim() || null,
-                            editor_in_chief: journal.contact_name || null,
-                            website_url: baseUrl && safeOjsPath ? `${baseUrl}/index.php/${safeOjsPath}` : null,
-                            ojs_path: safeOjsPath,
-                            status: journal.enabled ? "active" : "inactive",
-                            aims_and_scope: journal.aims_and_scope ?? null,
-                            author_guidelines: journal.author_guidelines ?? null,
-                            publication_fee: journal.publication_fee ?? 0,
-                            submission_fee: journal.submission_fee ?? 0,
-                            last_synced_at: syncTime,
-                        },
+                    return await withDeadlockRetry(async (tx) => {
+                        const defaults = await tx.$queryRaw<Array<{ name: string }>>`
+                            SELECT name FROM journal_specializations
+                            WHERE is_default = TRUE AND is_active = TRUE
+                            FOR UPDATE
+                        `
+                        const defaultSpec = defaults[0]
+                        if (!defaultSpec) throw new Error("No active default journal specialization is configured")
+
+                        return tx.journal.create({
+                            data: {
+                                ojs_id: String(journal.journal_id),
+                                title: journal.name || journal.path,
+                                description: journal.description || null,
+                                field: defaultSpec.name,
+                                cover_image_url: journal.thumbnail_url || null,
+                                issn: journal.issn?.trim() || null,
+                                e_issn: journal.e_issn?.trim() || null,
+                                publisher: journal.publisher || null,
+                                abbreviation: journal.abbreviation?.trim() || null,
+                                editor_in_chief: journal.contact_name || null,
+                                website_url: baseUrl && safeOjsPath ? `${baseUrl}/index.php/${safeOjsPath}` : null,
+                                ojs_path: safeOjsPath,
+                                status: journal.enabled ? "active" : "inactive",
+                                aims_and_scope: journal.aims_and_scope ?? null,
+                                author_guidelines: journal.author_guidelines ?? null,
+                                publication_fee: journal.publication_fee ?? 0,
+                                submission_fee: journal.submission_fee ?? 0,
+                                last_synced_at: syncTime,
+                            },
+                        })
                     })
                 } catch (error) {
                     // Log P2002 Unique constraint failures to help diagnose missing journals

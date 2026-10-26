@@ -34,7 +34,9 @@ The system enforces strict identity separation. **The previous "digitopub never 
 - **submitmanager.com (OJS)**:
   - Owns canonical public-user identities (editorial workflows still require an OJS account).
   - Owns ALL submission and editorial workflows.
-  - digitopub writes to OJS via exactly ONE audited path: when `ENABLE_ORCID_OJS_BACKFILL=true`, the ORCID iD is written into OJS `user_settings` on first email-match login. Every such write is logged in `audit_ojs_writes`.
+  - digitopub writes to OJS only through the guarded, audited functions in `src/lib/ojs-write-guard.ts`. Every write is logged in `audit_ojs_writes` (audit row first). Today there are two:
+    - ORCID backfill: when `ENABLE_ORCID_OJS_BACKFILL=true`, the ORCID iD is written into OJS `user_settings` on first email-match login.
+    - Journal specialization (#234): an admin's choice of `Journal.field` is written to the OJS journal setting `digitopubSpecialization` through the `set_journal_specialization` action of `ojs-user-bridge.php`, queued in `ojs_sync_jobs` and retried by `POST /api/ojs/cron/push-sync`.
 
 ## Public-User Identity (UIET-P1) — what changed and why
 
@@ -62,7 +64,7 @@ The system enforces strict identity separation. **The previous "digitopub never 
 
 **The hard rules** (enforced by ESLint `no-restricted-imports` in `eslint.config.mjs`, which bans importing `getSession`/`createSession`/`destroySession` and `jose.jwtVerify` in `app/**` and `src/server/routes/**` outside admin paths — there is no separate CI grep):
 - NO public route may call `getSession()` or `jose.jwtVerify` directly. Public routes use `getIdentity(request)` from `src/lib/identity-cookie.ts`.
-- digitopub writes to OJS ONLY through `writeOrcidToOjsWithAudit()` in `src/lib/ojs-write-guard.ts`. Every write produces an `audit_ojs_writes` row.
+- digitopub writes to OJS ONLY through the functions in `src/lib/ojs-write-guard.ts` (`writeOrcidToOjsWithAudit()`, `setJournalSpecializationInOjsWithAudit()`). Every write produces an `audit_ojs_writes` row. New kinds of OJS write get their own function there and their own explicitly allowlisted bridge action, never a generic "set any setting" path.
 - `ENABLE_ORCID_OJS_BACKFILL` defaults to `false` in production. Flip with intent only.
 - Submission flow (registration → OJS) is unchanged. digitopub never intercepts submit clicks.
 
@@ -236,3 +238,13 @@ Run with `bun run test`. Vitest, Node environment, `globals: true`, forked pool 
 - `specs/UIET-P1/` - full spec, plan, data model, and API contracts for the public-identity/engagement-tracking system
 - `docs/system_variables.md` - environment variable reference
 - `docs/` also contains architecture, Hostinger deployment, and OJS image pipeline reports
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

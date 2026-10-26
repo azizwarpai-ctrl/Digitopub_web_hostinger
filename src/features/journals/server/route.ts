@@ -5,15 +5,22 @@ import { requireAdmin } from "@/src/lib/auth-middleware"
 import { parsePagination, paginatedResponse } from "@/src/lib/pagination"
 import { serializeRecord, serializeMany } from "@/src/lib/serialize"
 import { prisma } from "@/src/lib/db/config"
+import { withDeadlockRetry } from "@/src/lib/db/deadlock-retry"
 import { normalizeOjsAssetUrl } from "@/src/features/ojs/utils/ojs-config"
 import { journalCreateSchema, journalUpdateSchema, journalIdParamSchema, journalSlugParamSchema } from "@/src/features/journals/schemas/journal-schema"
 import { hostingRequestRouter } from "./hosting-request-route"
+import { specializationRouter } from "./specialization-route"
+import { SpecializationError, requireActiveSpecialization } from "./specialization-service"
 import { resolveJournalRecord } from "./resolve-journal"
 
 const app = new Hono()
 
 // ─── POST /journals/register — Public journal-hosting request (hotfix A5) ──
 app.route("/", hostingRequestRouter)
+
+// ─── /journals/specializations, /journals/:id/specialization (#234) ──
+// Before GET /:id, which would otherwise take "specializations" as an id.
+app.route("/", specializationRouter)
 
 let runningFullSyncPromise: Promise<void> | null = null;
 
@@ -800,25 +807,28 @@ app.post("/", requireAdmin, zValidator("json", journalCreateSchema), async (c) =
       return c.json({ success: false, error: "Unauthorized" }, 401)
     }
     const data = c.req.valid("json")
-    const journal = await prisma.journal.create({
-      data: {
-        title: data.title,
-        abbreviation: data.abbreviation || null,
-        issn: data.issn || null,
-        e_issn: data.e_issn || null,
-        description: data.description || null,
-        field: data.field,
-        publisher: data.publisher || null,
-        editor_in_chief: data.editor_in_chief || null,
-        frequency: data.frequency || null,
-        submission_fee: data.submission_fee || 0,
-        publication_fee: data.publication_fee || 0,
-        cover_image_url: data.cover_image_url || null,
-        website_url: data.website_url || null,
-        status: data.status || "active",
-        created_by: BigInt(session.id),
-      },
-      select: DETAIL_JOURNAL_SELECT,
+    const journal = await withDeadlockRetry(async (tx) => {
+      const field = await requireActiveSpecialization(data.field, tx)
+      return tx.journal.create({
+        data: {
+          title: data.title,
+          abbreviation: data.abbreviation || null,
+          issn: data.issn || null,
+          e_issn: data.e_issn || null,
+          description: data.description || null,
+          field,
+          publisher: data.publisher || null,
+          editor_in_chief: data.editor_in_chief || null,
+          frequency: data.frequency || null,
+          submission_fee: data.submission_fee || 0,
+          publication_fee: data.publication_fee || 0,
+          cover_image_url: data.cover_image_url || null,
+          website_url: data.website_url || null,
+          status: data.status || "active",
+          created_by: BigInt(session.id),
+        },
+        select: DETAIL_JOURNAL_SELECT,
+      })
     })
 
     return c.json(
@@ -826,6 +836,7 @@ app.post("/", requireAdmin, zValidator("json", journalCreateSchema), async (c) =
       201
     )
   } catch (error) {
+    if (error instanceof SpecializationError) return c.json({ success: false, error: error.message }, error.status)
     console.error("Error creating journal:", error)
     return c.json({ success: false, error: "Failed to create journal" }, 500)
   }

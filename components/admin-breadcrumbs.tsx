@@ -1,5 +1,6 @@
 "use client"
 
+import { Fragment } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -54,15 +55,20 @@ export function AdminBreadcrumbs() {
             </BreadcrumbItem>
           </>
         )}
+        {/* Separator is a sibling <li>, not inside the item's <li>: nested
+            <li> is invalid HTML and broke hydration on every admin page
+            three or more levels deep (e.g. /admin/journals/1). */}
         {trailing.map((segment, i) => (
-          <BreadcrumbItem key={segment}>
+          <Fragment key={segment}>
             <BreadcrumbSeparator />
-            {i === trailing.length - 1 ? (
-              <BreadcrumbPage>{humanize(segment)}</BreadcrumbPage>
-            ) : (
-              <span className="text-muted-foreground">{humanize(segment)}</span>
-            )}
-          </BreadcrumbItem>
+            <BreadcrumbItem>
+              {i === trailing.length - 1 ? (
+                <BreadcrumbPage>{humanize(segment)}</BreadcrumbPage>
+              ) : (
+                <span className="text-muted-foreground">{humanize(segment)}</span>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
         ))}
       </BreadcrumbList>
     </Breadcrumb>

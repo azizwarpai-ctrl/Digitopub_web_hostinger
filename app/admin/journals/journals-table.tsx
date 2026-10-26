@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { DataTable, sortableHeader } from "@/components/data-table/data-table"
 import type { CsvColumn } from "@/components/data-table/csv-export"
 import { cn, formatDate, statusBadgeClass } from "@/src/lib/utils"
+import { useGetSpecializationSyncStatus } from "@/src/features/journals/api/use-specializations"
 
 export interface JournalRow {
   id: string
@@ -16,9 +17,38 @@ export interface JournalRow {
   abbreviation: string | null
   issn: string | null
   field: string
+  /** OJS path; public journal URLs use it (/journals/ijmp). */
+  ojsPath: string | null
   status: string
   coverImageUrl: string | null
   createdAt: string
+}
+
+const SYNC_DOT: Record<string, { className: string; label: string }> = {
+  synced: { className: "bg-green-500", label: "Synced to OJS" },
+  pending: { className: "bg-amber-500", label: "OJS sync pending" },
+  failed: { className: "bg-red-500", label: "OJS sync failed" },
+}
+
+function FieldCell({ row }: { row: JournalRow }) {
+  const { data } = useGetSpecializationSyncStatus()
+  const dot = SYNC_DOT[data?.[row.id]?.state ?? ""]
+  return (
+    <span className="inline-flex items-center gap-2">
+      {row.field}
+      {dot && (
+        <span title={dot.label} className="inline-flex items-center">
+          <span className={cn("inline-block h-2 w-2 rounded-full", dot.className)} aria-hidden="true" />
+          <span className="sr-only">{dot.label}</span>
+        </span>
+      )}
+      {row.field === "Uncategorized" && (
+        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+          Needs specialization
+        </Badge>
+      )}
+    </span>
+  )
 }
 
 const columns: ColumnDef<JournalRow, unknown>[] = [
@@ -60,6 +90,7 @@ const columns: ColumnDef<JournalRow, unknown>[] = [
   {
     accessorKey: "field",
     header: sortableHeader<JournalRow>("Field"),
+    cell: ({ row }) => <FieldCell row={row.original} />,
   },
   {
     accessorKey: "status",
@@ -86,7 +117,7 @@ const columns: ColumnDef<JournalRow, unknown>[] = [
       <div className="flex gap-2">
         <Button asChild variant="outline" size="sm" className="bg-transparent">
           <Link
-            href={`/admin/journals/${row.original.id}`}
+            href={`/journals/${row.original.ojsPath ?? row.original.id}`}
             onClick={(e) => e.stopPropagation()}
           >
             <Eye className="mr-1 h-4 w-4" />
@@ -95,7 +126,7 @@ const columns: ColumnDef<JournalRow, unknown>[] = [
         </Button>
         <Button asChild variant="outline" size="sm" className="bg-transparent">
           <Link
-            href={`/admin/journals/${row.original.id}/edit`}
+            href={`/admin/journals/${row.original.id}`}
             onClick={(e) => e.stopPropagation()}
           >
             <Pencil className="mr-1 h-4 w-4" />

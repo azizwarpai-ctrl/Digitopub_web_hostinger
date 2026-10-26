@@ -42,6 +42,7 @@
 
 			<div class="dp-portal-hero__content">
 				<h1 id="digitopub-journal-hero-title" class="dp-portal-hero__title">{$currentJournal->getLocalizedName()|escape}</h1>
+				{if isset($digitopubSpecializations[$currentJournal->getId()])}{assign var=dpSpec value=$digitopubSpecializations[$currentJournal->getId()]}<p class="dp-portal-hero__spec"><span class="dp-journal-card__spec">{$dpSpec|escape}</span></p>{/if}
 
 				<p class="dp-portal-hero__lead">Submit and track manuscripts for this journal. Published articles are on DigitoPub.</p>
 

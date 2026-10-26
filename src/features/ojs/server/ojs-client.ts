@@ -171,11 +171,7 @@ export async function provisionUser(payload: OjsUserProvisionData): Promise<{ su
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
         try {
-            // OJS_BRIDGE_URL overrides the default bridge location (the env
-            // templates have documented this var for a while, but it was
-            // never consumed — the URL was always hardcoded off OJS_BASE_URL).
-            const bridgeUrl =
-                process.env.OJS_BRIDGE_URL?.replace(/\/$/, "") || `${baseUrlStr}/ojs-user-bridge.php`;
+            const bridgeUrl = resolveUserBridgeUrl(baseUrlStr);
             const response = await fetch(bridgeUrl, {
                 method: "POST",
                 headers: {
@@ -224,6 +220,84 @@ export async function provisionUser(payload: OjsUserProvisionData): Promise<{ su
         }
     }
     return { success: false, error: lastError?.message || "OJS provisioning failed after all retries" };
+}
+
+/**
+ * URL of the OJS user bridge (ojs-user-bridge.php). OJS_USER_BRIDGE_URL
+ * overrides the default next to OJS_BASE_URL. OJS_BRIDGE_URL is NOT used
+ * here: it names the PDF bridge (see ojs-pdf-stream.ts), and reading it made
+ * provisioning POST user data to ojs-pdf-bridge.php.
+ */
+export function resolveUserBridgeUrl(baseUrl = process.env.OJS_BASE_URL?.replace(/\/$/, "") || ""): string {
+    return process.env.OJS_USER_BRIDGE_URL?.replace(/\/$/, "") || `${baseUrl}/ojs-user-bridge.php`;
+}
+
+export type UserBridgeResult =
+    | { ok: true; status: number; data: Record<string, unknown> }
+    | { ok: false; status: number | null; error: string; retryable: boolean };
+
+/**
+ * POST one action to the OJS user bridge, once, with a timeout. Retrying is
+ * the caller's job (the OJS sync queue retries with backoff), so this never
+ * loops. `retryable` is false only for answers that will not change on a
+ * retry: 400, 404 and other 4xx except 401/403/408/429. Auth errors stay
+ * retryable because they are fixed by correcting the key, not the request.
+ */
+export async function postToUserBridge(body: Record<string, unknown>, timeoutMs = 10000): Promise<UserBridgeResult> {
+    const baseUrlStr = process.env.OJS_BASE_URL?.replace(/\/$/, "") || "";
+    const apiKey = process.env.OJS_API_KEY;
+    if (!apiKey || (!baseUrlStr && !process.env.OJS_USER_BRIDGE_URL)) {
+        return { ok: false, status: null, error: "OJS bridge is not configured (OJS_API_KEY / OJS_BASE_URL)", retryable: true };
+    }
+
+    let url: URL;
+    try {
+        url = new URL(resolveUserBridgeUrl(baseUrlStr));
+    } catch {
+        return { ok: false, status: null, error: "Invalid OJS user bridge URL", retryable: false };
+    }
+    const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+    if (!isLoopback && url.protocol !== "https:") {
+        return { ok: false, status: null, error: "OJS user bridge URL must use HTTPS", retryable: false };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+            // A followed 301/302 turns the POST into a GET (the bridge then
+            // answers 405), so a redirect is reported as a config error.
+            redirect: "manual",
+        });
+        if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get("location") ?? "another URL";
+            return { ok: false, status: response.status, error: `OJS user bridge URL redirects to ${location}; set OJS_USER_BRIDGE_URL to the final URL`, retryable: true };
+        }
+        const text = await response.text();
+        let data: Record<string, unknown> = {};
+        try {
+            data = JSON.parse(text);
+        } catch {
+            /* non-JSON answer, handled below */
+        }
+        if (response.ok && data.success === true) {
+            return { ok: true, status: response.status, data };
+        }
+        const error = typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
+        const s = response.status;
+        const retryable = s >= 500 || s === 401 || s === 403 || s === 408 || s === 429 || response.ok;
+        return { ok: false, status: s, error, retryable };
+    } catch (error) {
+        const err = error as Error;
+        const message = err.name === "AbortError" ? `OJS bridge timed out after ${timeoutMs} ms` : err.message;
+        return { ok: false, status: null, error: message, retryable: true };
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 /**

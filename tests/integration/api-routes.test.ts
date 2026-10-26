@@ -20,6 +20,15 @@ vi.mock('@/src/lib/db/auth', () => ({
 
 vi.mock('@/src/lib/db/config', () => ({
     prisma: {
+        $queryRaw: vi.fn(),
+        $transaction: (fn: (tx: never) => unknown) => fn({
+            $queryRaw: prisma.$queryRaw,
+            journal: { create: prisma.journal.create },
+        } as never),
+        // #234: journal create validates `field` against the managed list.
+        journalSpecialization: {
+            findFirst: vi.fn().mockResolvedValue({ id: BigInt(1), name: 'CS', is_active: true }),
+        },
         journal: {
             findMany: vi.fn().mockResolvedValue([]),
             findUnique: vi.fn().mockResolvedValue(null),
@@ -181,6 +190,8 @@ describe('API Integration Tests', () => {
                     status: 'active', created_at: new Date(), created_by: BigInt(1),
                 }
                 vi.mocked(prisma.journal.create).mockResolvedValue(mockJournal as any)
+                vi.mocked(prisma.journalSpecialization.findFirst).mockResolvedValue({ id: BigInt(1), name: 'CS', is_active: true } as any)
+                vi.mocked(prisma.$queryRaw).mockResolvedValue([{ name: 'CS' }] as never)
 
                 const res = await app.request('/api/journals', {
                     method: 'POST',
@@ -191,6 +202,7 @@ describe('API Integration Tests', () => {
 
                 const body = await res.json()
                 expect(body.success).toBe(true)
+                expect(prisma.$queryRaw.mock.calls[0][0].join(' ')).toContain('FOR UPDATE')
             })
 
             it('should reject invalid data', async () => {

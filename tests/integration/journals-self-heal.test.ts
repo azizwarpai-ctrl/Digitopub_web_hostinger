@@ -26,12 +26,24 @@ vi.mock('@/src/lib/db/config', () => ({
 }))
 
 // Dynamic-import targets used by the self-heal path inside route.ts.
-const ojsQueryMock = vi.fn()
-const isOjsConfiguredMock = vi.fn(() => true)
-const fetchFromDatabaseMock = vi.fn()
-const syncOjsJournalsMock = vi.fn()
-const computeFingerprintMock = vi.fn()
-const getStoredFingerprintMock = vi.fn()
+// vi.hoisted: route.ts now also reaches ojs-client through a static import
+// chain (specialization route -> OJS sync queue), so the vi.mock factories
+// can run before plain top-level consts are initialised.
+const {
+    ojsQueryMock,
+    isOjsConfiguredMock,
+    fetchFromDatabaseMock,
+    syncOjsJournalsMock,
+    computeFingerprintMock,
+    getStoredFingerprintMock,
+} = vi.hoisted(() => ({
+    ojsQueryMock: vi.fn(),
+    isOjsConfiguredMock: vi.fn(() => true),
+    fetchFromDatabaseMock: vi.fn(),
+    syncOjsJournalsMock: vi.fn(),
+    computeFingerprintMock: vi.fn(),
+    getStoredFingerprintMock: vi.fn(),
+}))
 
 vi.mock('@/src/features/ojs/server/ojs-client', () => ({
     ojsQuery: ojsQueryMock,
