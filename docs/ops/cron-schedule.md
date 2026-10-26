@@ -6,7 +6,7 @@ All recurring jobs are exposed as Bearer-protected HTTP endpoints and must be sc
 
 Every endpoint:
 - requires `Authorization: Bearer $CRON_SECRET` (timing-safe compare; 401 otherwise) —
-  **`CRON_SECRET` must be added to the production env first, it is currently missing**;
+  **`CRON_SECRET` must be present in the production environment**;
 - holds a self-expiring DB lock (5 min) — concurrent/rapid retries get **429**;
 - writes a `sync_runs` ledger row (job name, trigger, status, stats, error) for observability;
 - returns **200** on success, **207** on partial completion (the next tick resumes).
@@ -24,6 +24,16 @@ Every endpoint:
 | Article digests | `POST /api/notifications/cron/digests` | `0 7 * * *` | Daily digest draft every day; weekly digest draft on Mondays (UTC). Contiguous windows. Same kill switch. |
 | OJS write queue | `POST /api/ojs/cron/push-sync` | `*/10 * * * *` | Retries writes to OJS that failed when saved (journal specialization, #234). Exponential backoff per job (1 min … 6 h, no cap for retryable errors; permanent failures stop). 207 = jobs attempted in this run are still retrying or failed (see admin journal page); 200 = no attempted failures/retries, although jobs waiting for future backoff may remain queued. Needs `OJS_API_KEY` + user bridge reachable. |
 | Notification send queue | `POST /api/notifications/cron/send` | `*/5 * * * *` | Sends queued publication-alert emails within `NOTIFY_MAX_PER_RUN`, `NOTIFY_MAX_PER_HOUR` and `NOTIFY_MAX_PER_DAY`. 207 = deliveries still queued, 200 = queue empty. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
+
+## OJS journal content drift
+
+`GET /api/ojs/sync` is the full scheduled OJS → digitopub mirror. Independently, the public journal listing runs a throttled drift check every 5 minutes and starts the same sync in the background when its fingerprint changes. The v2 fingerprint covers journal IDs, enabled states, paths, primary locales, and every mirrored setting, including descriptions and cover images. It excludes `digitopubSpecialization` because digitopub owns `Journal.field`.
+
+Each sync captures the fingerprint before fetching OJS and stores it only after a successful mirror write. The first v2 run differs from the old stored format and triggers one catch-up automatically; no fingerprint reset is needed.
+
+This read mirror uses `OJS_DATABASE_*`. It is separate from #234's `POST /api/ojs/cron/push-sync` write queue and does not use `OJS_USER_BRIDGE_URL`.
+
+To verify recovery, check admin **Sync health** for a recent successful `ojs_journals_sync`, then compare `GET /api/journals/ojbr` with OJS and open the public OJBR page. The current OJS description and cover should be present, `last_synced_at` should have advanced, and `field` should be unchanged.
 
 ## Exact commands (hPanel cron / external scheduler)
 

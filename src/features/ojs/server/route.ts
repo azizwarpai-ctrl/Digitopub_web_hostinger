@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { ojsJournalsResponseSchema } from "../schemas/ojs-schema"
 import { isOjsConfigured, ojsHealthCheck } from "./ojs-client"
-import { syncOjsJournals } from "./sync-ojs-journals"
+import { computeOjsJournalsFingerprint, syncOjsJournals } from "./sync-ojs-journals"
 import { fetchFromDatabase } from "./ojs-service"
 import { ojsCache, isFresh, isServableStale, isErrorCached, setCacheEntry, markCacheError } from "./ojs-cache"
 import { provisionRouter } from "./provision-route"
@@ -111,8 +111,9 @@ app.get("/sync", async (c) => {
         const syncResult = await withSyncRun("ojs_journals_sync", "http", async () => {
             // Sync everything, including disabled journals, so they get marked
             // inactive; deactivateMissing soft-deletes journals removed in OJS.
+            const fingerprint = await computeOjsJournalsFingerprint()
             const journals = await fetchFromDatabase(true)
-            const result = await syncOjsJournals(journals, { deactivateMissing: true })
+            const result = await syncOjsJournals(journals, { deactivateMissing: true, fingerprint })
             const snapshots = await refreshOjsJournalSnapshots()
             return {
                 status: result.errors > 0 ? ("partial" as const) : ("success" as const),

@@ -53,7 +53,10 @@ describe("OJS journal discovery specialization (#234)", () => {
     h.journalUpdate.mockImplementation(async ({ data }) => data)
     h.journalFindMany.mockResolvedValue([])
     h.settingUpsert.mockResolvedValue({})
-    h.ojsQuery.mockResolvedValue([{ c: 1, s: "1" }])
+    h.ojsQuery.mockResolvedValue([
+      { scope: "journals", c: 1, s: "1" },
+      { scope: "settings", c: 0, s: "0" },
+    ])
     h.defaultFindFirst.mockResolvedValue({ name: "Dental Medicine", is_default: true, is_active: true })
     h.txQueryRaw.mockResolvedValue([{ name: "Dental Medicine" }])
   })

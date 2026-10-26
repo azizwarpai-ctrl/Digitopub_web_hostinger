@@ -131,7 +131,10 @@ describe('Journals listing — OJS drift self-heal (fingerprint)', () => {
         expect(fetchFromDatabaseMock).toHaveBeenCalledTimes(1)
         expect(fetchFromDatabaseMock).toHaveBeenCalledWith(true)
         expect(syncOjsJournalsMock).toHaveBeenCalledTimes(1)
-        expect(syncOjsJournalsMock).toHaveBeenCalledWith([], { deactivateMissing: true })
+        expect(syncOjsJournalsMock).toHaveBeenCalledWith([], {
+            deactivateMissing: true,
+            fingerprint: '12:99999',
+        })
     })
 
     it('does not trigger a sync when the fingerprint matches the stored one', async () => {
