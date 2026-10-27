@@ -1,5 +1,5 @@
 import { prisma } from "@/src/lib/db/config"
-import type { SyncHealthJob, SyncHealthResponse, SyncHealthRunSummary } from "../types/admin-analytics-types"
+import type { SyncHealthCovers, SyncHealthJob, SyncHealthResponse, SyncHealthRunSummary } from "../types/admin-analytics-types"
 
 const RECENT_RUNS_FETCH = 200
 
@@ -72,7 +72,19 @@ export function summarizeSyncRuns(rows: RunRow[], perJobLimit: number): SyncHeal
     }
 
     jobs.sort((a, b) => a.jobName.localeCompare(b.jobName))
-    return { jobs, totalFailureStreak, computedAt: new Date().toISOString() }
+    return { jobs, totalFailureStreak, covers: latestCoverCheck(rows), computedAt: new Date().toISOString() }
+}
+
+/** The newest journal sync that recorded a cover check (#239); rows are newest-first. */
+function latestCoverCheck(rows: RunRow[]): SyncHealthCovers | null {
+    for (const row of rows) {
+        if (row.job_name !== "ojs_journals_sync") continue
+        const covers = (row.stats as { covers?: { checked?: unknown; broken?: unknown; kept_old?: unknown } } | null)?.covers
+        if (!covers || typeof covers.checked !== "number") continue
+        const paths = (v: unknown) => (Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : [])
+        return { checked: covers.checked, broken: paths(covers.broken), keptOld: paths(covers.kept_old), checkedAt: row.started_at.toISOString() }
+    }
+    return null
 }
 
 export async function getSyncHealth(perJobLimit: number): Promise<SyncHealthResponse> {

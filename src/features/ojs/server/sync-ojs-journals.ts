@@ -1,6 +1,7 @@
 import { prisma } from "@/src/lib/db/config"
 import { withDeadlockRetry } from "@/src/lib/db/deadlock-retry"
 import type { OjsJournal } from "../schemas/ojs-schema"
+import { chooseCoverUrl, type CoverChoice } from "./cover-check"
 
 export const JOURNALS_FINGERPRINT_KEY = "ojs_journals_fingerprint"
 
@@ -68,10 +69,20 @@ async function storeJournalsFingerprint(fingerprint: string): Promise<void> {
     })
 }
 
+export interface SyncCoversReport {
+    checked: number
+    ok: number
+    /** OJS paths whose stored cover does not load (404/410/HTML). */
+    broken: string[]
+    /** OJS paths where a broken new URL was refused and the working one kept. */
+    kept_old: string[]
+}
+
 export interface SyncJournalsResult {
     synced: number
     errors: number
     deactivated: string[]
+    covers: SyncCoversReport
 }
 
 /**
@@ -96,6 +107,16 @@ export async function syncOjsJournals(
     let synced = 0
     let errors = 0
     const deactivated: string[] = []
+    const covers: SyncCoversReport = { checked: 0, ok: 0, broken: [], kept_old: [] }
+    const noteCover = (path: string, choice: CoverChoice) => {
+        covers.checked++
+        if (choice.probe === "ok") covers.ok++
+        if (choice.probe === "broken") covers.broken.push(path)
+        if (choice.decision === "kept_old") {
+            covers.kept_old.push(path)
+            console.warn(`[OJS_SYNC] Kept the working cover for ${path}: the new OJS cover URL does not load`)
+        }
+    }
     const syncTime = new Date()
     const baseUrl = process.env.OJS_BASE_URL || ""
     const BATCH_SIZE = 10
@@ -112,13 +133,17 @@ export async function syncOjsJournals(
                 const trimmedJournalPath = journal.path?.trim() || ''
                 const safeOjsPath = trimmedJournalPath || existing?.ojs_path || null
 
+                // #239: never replace a working cover with one that does not load.
+                const cover = await chooseCoverUrl(existing?.cover_image_url ?? null, journal.thumbnail_url || null)
+                noteCover(safeOjsPath ?? String(journal.journal_id), cover)
+
                 if (existing) {
                     return prisma.journal.update({
                         where: { id: existing.id },
                         data: {
                             title: journal.name || journal.path,
                             description: journal.description || null,
-                            cover_image_url: journal.thumbnail_url || null,
+                            cover_image_url: cover.url,
                             issn: journal.issn?.trim() || null,
                             e_issn: journal.e_issn?.trim() || null,
                             publisher: journal.publisher || null,
@@ -152,7 +177,7 @@ export async function syncOjsJournals(
                                 title: journal.name || journal.path,
                                 description: journal.description || null,
                                 field: defaultSpec.name,
-                                cover_image_url: journal.thumbnail_url || null,
+                                cover_image_url: cover.url,
                                 issn: journal.issn?.trim() || null,
                                 e_issn: journal.e_issn?.trim() || null,
                                 publisher: journal.publisher || null,
@@ -229,6 +254,7 @@ export async function syncOjsJournals(
         }
     }
 
-    console.log(`[OJS_SYNC] Completed: ${synced} synced, ${errors} errors, ${deactivated.length} deactivated`)
-    return { synced, errors, deactivated }
+    if (covers.broken.length > 0) console.warn(`[OJS_SYNC] ${covers.broken.length} journal cover(s) do not load: ${covers.broken.join(", ")}`)
+    console.log(`[OJS_SYNC] Completed: ${synced} synced, ${errors} errors, ${deactivated.length} deactivated, covers ${covers.ok}/${covers.checked} ok`)
+    return { synced, errors, deactivated, covers }
 }

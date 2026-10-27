@@ -89,3 +89,22 @@ describe('summarizeSyncRuns', () => {
         expect(job.failureStreak).toBe(0)
     })
 })
+
+describe('summarizeSyncRuns cover check (#239)', () => {
+    it('is null until a journal sync records covers', () => {
+        expect(summarizeSyncRuns([run('ojs_journals_sync', 'success', 1000)], 10).covers).toBeNull()
+    })
+
+    it('reports broken and kept covers from the newest journal sync that checked them', () => {
+        const newest = { ...run('ojs_journals_sync', 'success', 1000), stats: { covers: { checked: 13, ok: 11, broken: ['jod', 'ojbr'], kept_old: ['ijmp'] } } }
+        const older = { ...run('ojs_journals_sync', 'success', 5000), stats: { covers: { checked: 13, ok: 13, broken: [], kept_old: [] } } }
+        const other = { ...run('metrics_daily_aggregation', 'success', 500), stats: { covers: { checked: 1, broken: ['x'] } } }
+
+        expect(summarizeSyncRuns([other, newest, older], 10).covers).toEqual({
+            checked: 13,
+            broken: ['jod', 'ojbr'],
+            keptOld: ['ijmp'],
+            checkedAt: newest.started_at.toISOString(),
+        })
+    })
+})

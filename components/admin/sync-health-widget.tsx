@@ -43,6 +43,23 @@ export function SyncHealthWidget() {
                 <CardDescription>Recurring jobs, from the sync_runs ledger</CardDescription>
             </CardHeader>
             <CardContent>
+                {data?.covers && data.covers.broken.length > 0 && (
+                    <div role="alert" className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
+                        <p className="font-medium text-destructive">
+                            {data.covers.broken.length} of {data.covers.checked} journal covers are not loading
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {data.covers.broken.join(", ")} · checked {relativeTime(data.covers.checkedAt)} by the OJS
+                            journal sync. See docs/ojs-image-pipeline.md.
+                        </p>
+                    </div>
+                )}
+                {data?.covers && data.covers.keptOld.length > 0 && (
+                    <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+                        The last sync refused new cover URLs that did not load and kept the working covers for{" "}
+                        {data.covers.keptOld.join(", ")}. Check the OJS image settings or the cover parser.
+                    </p>
+                )}
                 {isLoading ? (
                     <div className="space-y-2">
                         {[0, 1, 2].map((i) => (
