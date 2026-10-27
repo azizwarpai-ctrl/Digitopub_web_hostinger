@@ -1,0 +1,50 @@
+{
+  "_about": "Image-setting values exactly as OJS 3.5.0.2 stores them (shapes copied from the production database, 2026-10-27). `expected` is the file OJS actually writes to disk: for JSON/serialized settings that is `uploadName` (OJS lib/pkp/classes/services/PKPContextService.php:826 reads `$setting['uploadName']`); `name` is only the original filename of the upload. Do not edit `expected` to match the parser — fix the parser. See #148, #239.",
+  "cases": [
+    {
+      "source": "journal_settings.homepageImage (journal 1, cover)",
+      "raw": "{\"name\":\"journal cover image-Updated3.png\",\"uploadName\":\"homepageImage_en.png\",\"width\":1854,\"height\":2475,\"dateUploaded\":\"2026-06-02 17:43:31\"}",
+      "expected": "homepageImage_en.png"
+    },
+    {
+      "source": "journal_settings.homepageImage (journal 2, cover)",
+      "raw": "{\"name\":\"Journal Cover.png\",\"uploadName\":\"homepageImage_en.png\",\"width\":1848,\"height\":2473,\"dateUploaded\":\"2026-03-11 22:37:40\"}",
+      "expected": "homepageImage_en.png"
+    },
+    {
+      "source": "journal_settings.homepageImage (journal 10, cover)",
+      "raw": "{\"name\":\"Journal cover-updated_May 2025.png\",\"uploadName\":\"homepageImage_en.png\",\"width\":2736,\"height\":3808,\"dateUploaded\":\"2026-04-30 13:37:27\"}",
+      "expected": "homepageImage_en.png"
+    },
+    {
+      "source": "journal_settings.journalThumbnail (journal 1)",
+      "raw": "{\"name\":\"Journal New colored Logo.png\",\"uploadName\":\"journalThumbnail_en.png\",\"width\":2061,\"height\":1597,\"dateUploaded\":\"2026-04-10 04:04:40\"}",
+      "expected": "journalThumbnail_en.png"
+    },
+    {
+      "source": "journal_settings.pageHeaderLogoImage (journal 10)",
+      "raw": "{\"name\":\"New Updated logo for iJMP1.png\",\"uploadName\":\"pageHeaderLogoImage_en.png\",\"width\":1200,\"height\":300,\"dateUploaded\":\"2026-05-01 10:00:00\",\"altText\":\"\"}",
+      "expected": "pageHeaderLogoImage_en.png"
+    },
+    {
+      "source": "publication_settings.coverImage (article cover; no `name` key)",
+      "raw": "{\"dateUploaded\":\"2024-05-08 01:07:30\",\"uploadName\":\"submission_1_1_coverImage_en.png\",\"altText\":\"\"}",
+      "expected": "submission_1_1_coverImage_en.png"
+    },
+    {
+      "source": "issue_settings.coverImage (plain filename)",
+      "raw": "cover_issue_1_en.png",
+      "expected": "cover_issue_1_en.png"
+    },
+    {
+      "source": "legacy PHP-serialized image setting, name key first",
+      "raw": "a:3:{s:4:\"name\";s:17:\"Journal Cover.png\";s:10:\"uploadName\";s:20:\"homepageImage_en.png\";s:5:\"width\";i:1848;}",
+      "expected": "homepageImage_en.png"
+    },
+    {
+      "source": "legacy PHP-serialized image setting, uploadName key first",
+      "raw": "a:2:{s:10:\"uploadName\";s:20:\"homepageImage_en.png\";s:4:\"name\";s:17:\"Journal Cover.png\";}",
+      "expected": "homepageImage_en.png"
+    }
+  ]
+}

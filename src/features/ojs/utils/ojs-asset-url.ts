@@ -2,7 +2,7 @@
  * Single source of truth for building OJS public-asset URLs.
  *
  * OJS stores image filenames in three formats depending on version:
- *   1. JSON:            {"en_US":{"uploadName":"cover.png"}} or {"uploadName":"photo.jpg"}
+ *   1. JSON:            {"name":"Cover.png","uploadName":"homepageImage_en.png"} (uploadName = the stored file)
  *   2. PHP-serialized:  a:2:{s:10:"uploadName";s:9:"photo.jpg";...}
  *   3. Plain string:    cover_issue_1_en_US.png
  *
@@ -29,17 +29,34 @@ function isImageFilename(value: unknown): value is string {
   return typeof value === "string" && IMAGE_FILENAME_SHAPE.test(value)
 }
 
-function findUploadName(obj: unknown): string | null {
+/**
+ * Depth-first search for a filename-shaped value under `key`, so nested
+ * locale objects ({"en": {...}}) work too.
+ */
+function findImageKey(obj: unknown, key: "uploadName" | "name"): string | null {
   if (obj === null || typeof obj !== "object") return null
   const record = obj as Record<string, unknown>
-  // Prefer 'name' (the actual file on disk in OJS 3.x) over 'uploadName' (the original uploaded filename)
-  if (isImageFilename(record.name)) return record.name
-  if (isImageFilename(record.uploadName)) return record.uploadName
-  for (const key of Object.keys(record)) {
-    const found = findUploadName(record[key])
+  if (isImageFilename(record[key])) return record[key] as string
+  for (const child of Object.values(record)) {
+    const found = findImageKey(child, key)
     if (found) return found
   }
   return null
+}
+
+/**
+ * The file OJS stores is `uploadName` (e.g. "homepageImage_en.png"); `name` is
+ * only the original filename of the upload ("Journal Cover Image.png"), and a
+ * URL built from it is a 404. OJS itself reads `$setting['uploadName']`
+ * (lib/pkp/classes/services/PKPContextService.php:826). `name` is a
+ * last-resort fallback for rows that carry nothing else.
+ *
+ * DO NOT swap this order: doing so broke every journal cover in production
+ * three times (#148, #155 revert, #239). The truth fixtures in
+ * tests/fixtures/ojs-image-settings.json fail if it changes.
+ */
+function findUploadName(obj: unknown): string | null {
+  return findImageKey(obj, "uploadName") ?? findImageKey(obj, "name")
 }
 
 /**
@@ -52,7 +69,7 @@ export function parseOjsFilename(raw: string | null | undefined): string | null 
   const trimmed = raw.trim()
   if (!trimmed) return null
 
-  // 1. JSON — {"en_US":{"name":"cover.png"}} or {"uploadName":"photo.jpg"}
+  // 1. JSON — {"name":"Cover.png","uploadName":"homepageImage_en.png"} or nested by locale
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
       const parsed = JSON.parse(trimmed)
@@ -63,14 +80,12 @@ export function parseOjsFilename(raw: string | null | undefined): string | null 
     }
   }
 
-  // 2. PHP serialized — a:2:{s:4:"name";s:12:"filename.png"...}
-  // Prefer 'name' first
-  if (trimmed.includes('name";s:')) {
-    const match = trimmed.match(/name";s:\d+:"([^"]+)"/)
-    if (isImageFilename(match?.[1])) return match[1]
-  }
-  if (trimmed.includes('uploadName";s:')) {
-    const match = trimmed.match(/uploadName";s:\d+:"([^"]+)"/)
+  // 2. PHP serialized — a:2:{s:4:"name";s:17:"Journal Cover.png";s:10:"uploadName";s:20:"homepageImage_en.png";}
+  // Same order as JSON: uploadName, then name. Keys are matched exactly
+  // (`s:10:"uploadName"`, `s:4:"name"`), so "name" never matches inside
+  // "uploadName" and key order in the array does not matter.
+  for (const pattern of [/s:10:"uploadName";s:\d+:"([^"]+)"/, /s:4:"name";s:\d+:"([^"]+)"/]) {
+    const match = trimmed.match(pattern)
     if (isImageFilename(match?.[1])) return match[1]
   }
 

@@ -30,16 +30,20 @@ describe("parseOjsFilename", () => {
     expect(parseOjsFilename('{"uploadName":"photo.jpg"}')).toBe("photo.jpg")
   })
 
-  it("returns name when JSON contains only name", () => {
-    // OJS 3.x stores the on-disk filename under `name`; the parser must
-    // extract it even when `uploadName` is absent.
+  it("falls back to name when JSON carries no uploadName", () => {
+    // Last resort only: OJS always writes uploadName for images, but a
+    // hand-edited row may carry just `name`.
     expect(parseOjsFilename('{"name":"example.png"}')).toBe("example.png")
   })
 
-  it("prefers name over uploadName when both are present", () => {
+  // #148 / #239: this used to assert the opposite ("prefers name") with
+  // made-up data, which kept the bug in place and got a correct fix reverted.
+  // OJS writes the file to disk under `uploadName`; `name` is the original
+  // filename of the upload (PKPContextService.php:826 reads uploadName).
+  it("uses uploadName (the file OJS stores) over name when both are present", () => {
     expect(
-      parseOjsFilename('{"name":"on-disk.png","uploadName":"original.png"}')
-    ).toBe("on-disk.png")
+      parseOjsFilename('{"name":"Journal Cover Image.png","uploadName":"homepageImage_en.png"}')
+    ).toBe("homepageImage_en.png")
   })
 
   it("rejects extracted JSON name that is not filename-shaped", () => {
@@ -71,9 +75,9 @@ describe("parseOjsFilename", () => {
   })
 
   it("returns null for JSON without name or uploadName", () => {
-    // Both `name` (preferred, the on-disk filename in OJS 3.x) and `uploadName`
-    // (the original uploaded name) are recognized keys. A JSON object that
-    // carries neither — and no nested object that does — has nothing to extract.
+    // `uploadName` (the file OJS stores, preferred) and `name` (the original
+    // filename, last-resort fallback) are the recognized keys. A JSON object
+    // that carries neither — and no nested object that does — has nothing to extract.
     expect(parseOjsFilename('{"label":"something","value":42}')).toBeNull()
   })
 
@@ -284,5 +288,27 @@ describe("normalizeOjsAssetUrl", () => {
 
   it("returns null for undefined input", () => {
     expect(normalizeOjsAssetUrl(undefined)).toBeNull()
+  })
+})
+
+// ─── Truth fixtures (#148, #239) ──────────────────────────────────────────────
+// Real OJS 3.5 setting shapes. If one of these fails, the parser is wrong —
+// do not change the fixture's `expected` to make it pass.
+
+import imageSettings from "../fixtures/ojs-image-settings.json"
+
+describe("parseOjsFilename against real OJS image settings", () => {
+  it.each(imageSettings.cases.map((c) => [c.source, c.raw, c.expected]))(
+    "%s → the file OJS stored",
+    (_source, raw, expected) => {
+      expect(parseOjsFilename(raw)).toBe(expected)
+    }
+  )
+
+  it("never returns the human `name` for a production cover row (the 2026-10-26 regression)", () => {
+    for (const c of imageSettings.cases) {
+      const human = /"name":"([^"]+)"/.exec(c.raw)?.[1]
+      if (human && human !== c.expected) expect(parseOjsFilename(c.raw)).not.toBe(human)
+    }
   })
 })
