@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 import { getOjsHostnames } from "@/src/features/ojs/utils/ojs-config"
+import { OJS_FETCH_HEADERS } from "@/src/features/ojs/utils/ojs-hosts"
 
 /**
  * OJS image proxy — fetches public assets from the OJS server using a
@@ -64,12 +65,7 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Browser-like UA ensures OJS nginx rules don't block the request as a bot
-const FETCH_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-  Accept: "image/webp,image/avif,image/png,image/jpeg,image/gif",
-  "Accept-Language": "en-US,en;q=0.9",
-} as const
+const FETCH_HEADERS = OJS_FETCH_HEADERS
 
 function hostAllowed(url: URL): boolean {
   if (url.protocol !== "https:" && url.protocol !== "http:") return false

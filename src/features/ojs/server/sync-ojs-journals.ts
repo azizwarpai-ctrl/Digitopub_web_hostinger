@@ -246,7 +246,10 @@ export async function syncOjsJournals(
     // Record the fingerprint of what we just synced so the drift check can
     // cheaply skip when nothing changed. Best-effort — a failure here only
     // means the next drift check triggers one redundant sync.
-    if (errors === 0) {
+    // A kept-old cover (#239) is not a finished sync: leave the fingerprint
+    // unset so the next drift check retries and picks up the new cover once
+    // it loads, instead of freezing the old one until OJS changes again.
+    if (errors === 0 && covers.kept_old.length === 0) {
         try {
             await storeJournalsFingerprint(fingerprint)
         } catch (error) {

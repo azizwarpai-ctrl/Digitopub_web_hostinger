@@ -23,7 +23,7 @@ import { getOjsPublicAssetsBaseUrl, normalizeOjsAssetUrl } from "./ojs-config"
  * belt-and-suspenders against corrupted data so we never construct a URL
  * around garbage like `name: "<script>"`, `name: ""`, or `name: "subdir"`.
  */
-const IMAGE_FILENAME_SHAPE = /^(cover_issue_|article_|cover_)|\.(jpg|jpeg|png|webp|gif|avif)$/i
+const IMAGE_FILENAME_SHAPE = /^(cover_issue_|article_|cover_)|\.(jpg|jpeg|png|webp|gif|avif|svg)$/i
 
 function isImageFilename(value: unknown): value is string {
   return typeof value === "string" && IMAGE_FILENAME_SHAPE.test(value)
@@ -56,7 +56,17 @@ function findImageKey(obj: unknown, key: "uploadName" | "name"): string | null {
  * tests/fixtures/ojs-image-settings.json fail if it changes.
  */
 function findUploadName(obj: unknown): string | null {
-  return findImageKey(obj, "uploadName") ?? findImageKey(obj, "name")
+  const stored = findImageKey(obj, "uploadName")
+  if (stored) return stored
+  // A row that has an uploadName key at all names its file there: `name` is
+  // never on disk, so it is no fallback for an unusable uploadName.
+  if (hasKey(obj, "uploadName")) return null
+  return findImageKey(obj, "name")
+}
+
+function hasKey(obj: unknown, key: string): boolean {
+  if (obj === null || typeof obj !== "object") return false
+  return key in (obj as object) || Object.values(obj as Record<string, unknown>).some((child) => hasKey(child, key))
 }
 
 /**

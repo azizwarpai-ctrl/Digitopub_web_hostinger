@@ -1,4 +1,4 @@
-import { isOjsHost, REDIRECT_STATUSES, resolveOjsRedirectTarget } from "@/src/features/ojs/utils/ojs-hosts"
+import { isOjsHost, OJS_FETCH_HEADERS, REDIRECT_STATUSES, resolveOjsRedirectTarget } from "@/src/features/ojs/utils/ojs-hosts"
 
 /**
  * Cover write guard for the OJS journal sync (#239).
@@ -37,7 +37,7 @@ export async function probeCoverUrl(
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 5000)
         try {
-            const res = await fetchImpl(current, { method: "HEAD", redirect: "manual", signal: controller.signal })
+            const res = await fetchImpl(current, { method: "HEAD", headers: OJS_FETCH_HEADERS, redirect: "manual", signal: controller.signal })
             if (REDIRECT_STATUSES.has(res.status)) {
                 const next = resolveOjsRedirectTarget(res.headers.get("location"), current)
                 if (!next) return "unknown"

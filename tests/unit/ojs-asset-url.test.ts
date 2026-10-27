@@ -305,6 +305,15 @@ describe("parseOjsFilename against real OJS image settings", () => {
     }
   )
 
+  it("never falls back to `name` when the row has an unusable uploadName (name is never on disk)", () => {
+    expect(parseOjsFilename('{"name":"Journal Cover.png","uploadName":"homepageImage_en"}')).toBeNull()
+    expect(parseOjsFilename('{"en":{"name":"Cover.png","uploadName":""},"fr":{"name":"Couverture.png"}}')).toBeNull()
+  })
+
+  it("accepts SVG covers stored by OJS 3.4+", () => {
+    expect(parseOjsFilename('{"name":"Logo.svg","uploadName":"pageHeaderLogoImage_en.svg"}')).toBe("pageHeaderLogoImage_en.svg")
+  })
+
   it("never returns the human `name` for a production cover row (the 2026-10-26 regression)", () => {
     for (const c of imageSettings.cases) {
       const human = /"name":"([^"]+)"/.exec(c.raw)?.[1]

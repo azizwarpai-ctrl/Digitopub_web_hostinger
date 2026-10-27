@@ -29,6 +29,8 @@ describe("probeCoverUrl (#239)", () => {
     const fetchImpl = vi.fn().mockResolvedValue(reply(200, { "content-type": "image/png" }))
     expect(await probeCoverUrl(GOOD, { fetchImpl })).toBe("ok")
     expect(fetchImpl.mock.calls[0][1]).toMatchObject({ method: "HEAD", redirect: "manual" })
+    // Same browser-like headers as /api/image-proxy: OJS nginx blocks bots.
+    expect(fetchImpl.mock.calls[0][1].headers["User-Agent"]).toMatch(/^Mozilla\//)
   })
 
   it.each([404, 410])("is broken for %i", async (status) => {
@@ -118,6 +120,8 @@ describe("syncOjsJournals cover guard (#239)", () => {
 
     expect(h.journalUpdate.mock.calls[0][0].data.cover_image_url).toBe(GOOD)
     expect(result.covers).toEqual({ checked: 1, ok: 1, broken: [], kept_old: ["jod"] })
+    // Not a finished sync: no fingerprint, so the next drift check retries.
+    expect(h.settingUpsert).not.toHaveBeenCalled()
   })
 
   it("repairs a broken stored cover when OJS gives a working one", async () => {
@@ -129,5 +133,6 @@ describe("syncOjsJournals cover guard (#239)", () => {
 
     expect(h.journalUpdate.mock.calls[0][0].data.cover_image_url).toBe(GOOD)
     expect(result.covers).toMatchObject({ ok: 1, broken: [], kept_old: [] })
+    expect(h.settingUpsert).toHaveBeenCalled()
   })
 })
