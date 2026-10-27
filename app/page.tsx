@@ -7,6 +7,12 @@ import { normalizeOjsAssetUrl } from "@/src/features/ojs/utils/ojs-config"
 import type { Journal } from "@/src/features/journals"
 import HomePageClient from "@/app/home-page-client"
 
+// Regenerate from the database at most every 5 minutes (ISR). Without this
+// the page is built once per deploy and keeps whatever cover URLs the DB held
+// at build time: after the 2026-10-27 deploy it served the broken covers for
+// hours although the data was already repaired (#148, #239).
+export const revalidate = 300
+
 export const metadata: Metadata = {
   title: "DigitoPub — Scientific Journals Platform",
   description:

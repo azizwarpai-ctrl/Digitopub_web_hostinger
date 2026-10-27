@@ -79,6 +79,10 @@ makes those tests fail, the change is wrong — never edit the fixture to match.
 4. **Hourly monitor**: `.github/workflows/cover-monitor.yml` runs
    `scripts/check-covers.ts` against digitopub.com and opens an issue labelled
    `cover-monitor` when any cover fails (it closes it when they recover).
+   It checks the covers from the API **and** the ones baked into the homepage HTML.
+5. **Homepage revalidation**: `app/page.tsx` sets `revalidate = 300`. The homepage
+   is prerendered; without this it kept the cover URLs from deploy time and
+   showed broken covers after the data was repaired (2026-10-27).
 
 ### If covers break
 
@@ -87,6 +91,7 @@ makes those tests fail, the change is wrong — never edit the fixture to match.
    (`uploadName`) and with the files under `public/journals/{id}/` on the OJS host.
 3. Fix the cause (usually the parser), deploy, then run the OJS journal sync
    once (`GET /api/ojs/sync` with `CRON_SECRET`) to rewrite the stored URLs.
+   The homepage picks up the repaired URLs within 5 minutes.
 
 ### `ojs-image.tsx` — renderer
 
