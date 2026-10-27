@@ -67,6 +67,30 @@ async function checkCover(journal: ApiJournal): Promise<Result> {
   }
 }
 
+/**
+ * Covers baked into the homepage HTML. The homepage is prerendered, so it can
+ * serve stale cover URLs although the API is already correct (#239); checking
+ * only the API would report green while visitors see placeholders.
+ */
+async function checkHomepage(): Promise<{ checked: number; failed: string[] }> {
+  const html = await (await fetchWithTimeout(`${SITE}/`)).text()
+  const srcs = [...new Set([...html.matchAll(/\/api\/image-proxy\?url=([^"&\s]+)/g)].map((m) => m[1]))]
+  const failed: string[] = []
+  for (let i = 0; i < srcs.length; i += 4) {
+    await Promise.all(
+      srcs.slice(i, i + 4).map(async (encoded) => {
+        try {
+          const res = await fetchWithTimeout(`${SITE}/api/image-proxy?url=${encoded}`, { method: "HEAD" })
+          if (!(res.ok && (res.headers.get("content-type") ?? "").startsWith("image/"))) failed.push(decodeURIComponent(encoded))
+        } catch {
+          failed.push(decodeURIComponent(encoded))
+        }
+      })
+    )
+  }
+  return { checked: srcs.length, failed }
+}
+
 async function main(): Promise<number> {
   let journals: ApiJournal[]
   try {
@@ -87,13 +111,28 @@ async function main(): Promise<number> {
   }
   const failed = results.filter((r) => !r.ok)
   const noCover = results.filter((r) => r.status === "no cover")
+  let homepage: { checked: number; failed: string[] }
+  try {
+    homepage = await checkHomepage()
+  } catch (error) {
+    homepage = { checked: 0, failed: [`homepage could not be loaded: ${String(error)}`] }
+  }
+  const allOk = failed.length === 0 && homepage.failed.length === 0
   const lines = [
-    failed.length === 0
-      ? `## ✅ All ${results.length} journal covers load on ${SITE}`
-      : `## ❌ ${failed.length} of ${results.length} journal covers do not load on ${SITE}`,
+    allOk
+      ? `## ✅ All ${results.length} journal covers load on ${SITE} (and all ${homepage.checked} on the homepage)`
+      : `## ❌ Journal covers are not loading on ${SITE}: ${failed.length} of ${results.length} from the API, ${homepage.failed.length} of ${homepage.checked} on the homepage`,
     "",
     `Checked ${new Date().toISOString()} through \`/api/image-proxy\` (what visitors load).`,
   ]
+  if (homepage.failed.length > 0) {
+    lines.push(
+      "",
+      "Homepage covers that do not load (the homepage is regenerated from the database at most every 5 minutes; " +
+        "if the API is fine but these persist, the page is stale):",
+      ...homepage.failed.map((u) => `- ${cell(u)}`)
+    )
+  }
   if (failed.length > 0) {
     lines.push("", "| Journal | Path | Result | Stored cover URL |", "|---|---|---|---|")
     for (const r of failed) lines.push(`| ${cell(r.journal)} | ${cell(r.path)} | ${r.status} | ${cell(r.cover ?? "—")} |`)
@@ -108,7 +147,7 @@ async function main(): Promise<number> {
     lines.push("", `Journals without a cover in OJS (shown with the placeholder, not a failure): ${noCover.map((r) => cell(r.path)).join(", ")}`)
   }
   console.log(lines.join("\n"))
-  return failed.length === 0 ? 0 : 1
+  return allOk ? 0 : 1
 }
 
 process.exit(await main())
