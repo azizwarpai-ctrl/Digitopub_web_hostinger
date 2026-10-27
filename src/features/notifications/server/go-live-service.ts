@@ -123,7 +123,7 @@ export async function getReadiness(now = new Date()): Promise<ReadinessItem[]> {
         },
         ...CRON_JOBS.map(({ job, label, maxAgeMs }, i): ReadinessItem => {
             const run = runs[i]
-            if (!run) return { key: job, label, ok: false, detail: "Never called: add it on cron-job.org" }
+            if (!run) return { key: job, label, ok: false, detail: "Never called: check the Scheduler workflow in GitHub Actions" }
             const recent = now.getTime() - run.started_at.getTime() <= maxAgeMs
             return {
                 key: job, label,
