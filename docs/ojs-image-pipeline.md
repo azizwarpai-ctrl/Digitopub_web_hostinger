@@ -24,11 +24,11 @@ Three exported functions:
 
 - **`parseOjsFilename(raw)`** — extracts the bare filename from whatever OJS
   stored. Handles three OJS storage formats:
-  1. JSON: `{"en_US":{"name":"cover.png","uploadName":"homepageImage_en.png"}}`
-     or `{"uploadName":"photo.jpg"}` — both `name` and `uploadName` keys are
-     recognized (see field semantics below).
-  2. PHP-serialized: `a:2:{s:10:"uploadName";s:9:"photo.jpg";…}` — likewise may
-     carry both `uploadName`;s:… and `name`;s:… keys.
+  1. JSON: `{"name":"Journal Cover.png","uploadName":"homepageImage_en.png"}`
+     (optionally nested by locale) — `uploadName` is used; `name` only when a
+     row has no `uploadName` (see field semantics below).
+  2. PHP-serialized: `a:2:{s:10:"uploadName";s:20:"homepageImage_en.png";…}` —
+     same order; keys are matched exactly.
   3. Plain string: `cover_issue_1_en_US.png` or any string ending in an image
      extension.
 
@@ -45,6 +45,48 @@ Three exported functions:
 
 `normalizeOjsAssetUrl(url)` in `ojs-config.ts` is the idempotent read-time fix
 that rewrites any persisted `…/ojs/public/…` → `…/public/…`.
+
+### Field semantics: `uploadName` is the file, `name` is not (DO NOT SWAP)
+
+OJS 3.x stores image settings as
+`{"name": "<original filename>", "uploadName": "<file written to disk>", …}`:
+
+| Key | Example | Exists on disk? |
+|---|---|---|
+| `uploadName` | `homepageImage_en.png` | **Yes**: `public/journals/1/homepageImage_en.png` → 200 |
+| `name` | `journal cover image-Updated3.png` | **No**: the original filename of the upload → 404 |
+
+Evidence: OJS 3.5 reads the stored file as `$setting['uploadName']`
+(`lib/pkp/classes/services/PKPContextService.php:826`), and every OJS image
+writer (context, site, publication, announcement, highlight, profile) sets
+`uploadName` to the generated filename.
+
+Swapping this order broke **every journal cover in production three times**
+(#148; the fix #152 was reverted by #155; #239). Real production setting shapes
+live in `tests/fixtures/ojs-image-settings.json`. If a change to the parser
+makes those tests fail, the change is wrong — never edit the fixture to match.
+
+### Safeguards against a broken cover (#239)
+
+1. **Truth fixtures**: `tests/unit/ojs-asset-url.test.ts` runs the parser on
+   real OJS rows.
+2. **Sync write guard**: `src/features/ojs/server/cover-check.ts`. The journal
+   sync HEAD-checks a new cover URL and never replaces a working cover with
+   one that 404s. It reports `covers {checked, ok, broken, kept_old}` in
+   `sync_runs.stats`.
+3. **Admin warning**: the Sync health widget names journals whose covers do
+   not load, or whose broken new URL was refused.
+4. **Hourly monitor**: `.github/workflows/cover-monitor.yml` runs
+   `scripts/check-covers.ts` against digitopub.com and opens an issue labelled
+   `cover-monitor` when any cover fails (it closes it when they recover).
+
+### If covers break
+
+1. `bun run scripts/check-covers.ts` → which journals, which status, which stored URL.
+2. Compare the stored URL's filename with OJS `journal_settings.homepageImage`
+   (`uploadName`) and with the files under `public/journals/{id}/` on the OJS host.
+3. Fix the cause (usually the parser), deploy, then run the OJS journal sync
+   once (`GET /api/ojs/sync` with `CRON_SECRET`) to rewrite the stored URLs.
 
 ### `ojs-image.tsx` — renderer
 
@@ -64,7 +106,9 @@ that rewrites any persisted `…/ojs/public/…` → `…/public/…`.
 - Fetches with a browser User-Agent; no `Referer` header.
 - Validates response `Content-Type` is `image/*`.
 - Returns with `Cache-Control: public, max-age=86400`.
-- Hard limit: 1 MB response body.
+- Hard limit: 15 MB response body (`IMAGE_PROXY_MAX_BYTES` overrides it); covers
+  are up to ~3.4 MB.
+- Answers `HEAD` too, which the cover monitor uses (no image download).
 
 ## Adding a new OJS image surface
 
@@ -87,5 +131,6 @@ Both `submitmanager.com` and `journals.digitopub.com` are in:
 ## Tests
 
 `tests/unit/ojs-asset-url.test.ts` covers all three storage formats, the
-`/ojs/public/` rewrite, path-traversal safety, null/garbage inputs, and the
-env-var stripping logic.
+real-OJS truth fixtures, the `/ojs/public/` rewrite, path-traversal safety,
+null/garbage inputs, and the env-var stripping logic.
+`tests/unit/ojs-cover-check.test.ts` covers the sync write guard.

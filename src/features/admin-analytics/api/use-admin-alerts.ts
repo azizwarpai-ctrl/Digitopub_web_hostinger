@@ -23,6 +23,8 @@ function useUnreadMessagesCount() {
 
 export interface AdminAlerts {
     syncFailureStreak: number
+    /** Journal covers the latest OJS sync found not loading (#239). */
+    brokenCovers: number
     unreadMessages: number
     total: number
     isLoading: boolean
@@ -38,11 +40,13 @@ export function useAdminAlerts(): AdminAlerts {
     const messages = useUnreadMessagesCount()
 
     const syncFailureStreak = syncHealth.data?.totalFailureStreak ?? 0
+    const brokenCovers = syncHealth.data?.covers?.broken.length ?? 0
     const unreadMessages = messages.data?.unread ?? 0
     return {
         syncFailureStreak,
+        brokenCovers,
         unreadMessages,
-        total: syncFailureStreak + unreadMessages,
+        total: syncFailureStreak + brokenCovers + unreadMessages,
         isLoading: syncHealth.isLoading || messages.isLoading,
     }
 }

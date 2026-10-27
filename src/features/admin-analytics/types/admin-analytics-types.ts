@@ -120,9 +120,21 @@ export interface SyncHealthJob {
   recentRuns: SyncHealthRunSummary[]
 }
 
+/** Journal covers as checked by the latest OJS journal sync (#239). */
+export interface SyncHealthCovers {
+  checked: number
+  /** OJS paths whose stored cover does not load. */
+  broken: string[]
+  /** OJS paths where the sync refused a broken new URL and kept the working one. */
+  keptOld: string[]
+  checkedAt: string
+}
+
 export interface SyncHealthResponse {
   jobs: SyncHealthJob[]
   /** Sum of per-job failure streaks — drives the header alert badge. */
   totalFailureStreak: number
+  /** Null until a journal sync has recorded a cover check. */
+  covers: SyncHealthCovers | null
   computedAt: string
 }

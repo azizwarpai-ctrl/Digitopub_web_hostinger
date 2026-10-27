@@ -71,6 +71,19 @@ export function isOjsHost(hostname: string): boolean {
 }
 
 /**
+ * Headers for server-side requests to OJS images. The OJS host's nginx rules
+ * block bot-like requests, so these look like a browser (no Referer, which
+ * would trip hotlink protection). Shared by /api/image-proxy and the sync's
+ * cover check so both see what a visitor sees.
+ */
+export const OJS_FETCH_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+  Accept: "image/webp,image/avif,image/png,image/jpeg,image/gif",
+  "Accept-Language": "en-US,en;q=0.9",
+} as const
+
+/**
  * Redirect statuses that carry a `Location` header worth considering.
  */
 export const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])

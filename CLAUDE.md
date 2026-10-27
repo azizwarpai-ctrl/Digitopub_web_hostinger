@@ -156,6 +156,7 @@ Read-only integration with Open Journal Systems database:
 - Client: `src/features/ojs/server/ojs-client.ts`
 - Configured via `OJS_DATABASE_*` environment variables
 - Uses separate MySQL connection pool with retry logic
+- **Hard rule — OJS image filenames:** in OJS image settings (`{"name": …, "uploadName": …}`) the file on disk is **`uploadName`**; `name` is only the original filename of the upload and a URL built from it 404s (OJS reads `$setting['uploadName']`, `PKPContextService.php:826`). `parseOjsFilename` must keep `uploadName` first. Swapping it broke every journal cover in production three times (#148, #155 revert, #239). The truth fixtures (`tests/fixtures/ojs-image-settings.json`) are real OJS rows: if they fail, fix the code, never the fixture. Covers are also protected by the sync write guard (`cover-check.ts`), the Sync health warning, and the hourly `cover-monitor` workflow; see `docs/ojs-image-pipeline.md`.
 
 ### Other Subsystems
 
