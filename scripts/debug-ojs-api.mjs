@@ -8,13 +8,17 @@
  *   node scripts/debug-ojs-api.mjs
  * 
  * Or with a custom URL:
- *   OJS_API_URL="https://submitmanager.com/api/api.php" OJS_API_KEY="dgtpub_ojs_2026_k9x7m4" node scripts/debug-ojs-api.mjs
+ *   OJS_API_URL="https://submitmanager.com/api/api.php" OJS_API_KEY="<your OJS_API_KEY>" node scripts/debug-ojs-api.mjs
  */
 
 // ─── Configuration ──────────────────────────────────────────────────
 
 const API_URL = process.env.OJS_API_URL || "https://submitmanager.com/api/api.php"
-const API_KEY = process.env.OJS_API_KEY || "dgtpub_ojs_2026_k9x7m4"
+const API_KEY = process.env.OJS_API_KEY
+if (!API_KEY) {
+    console.error("OJS_API_KEY is not set. Run: OJS_API_KEY='<key>' node scripts/debug-ojs-api.mjs")
+    process.exit(1)
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
