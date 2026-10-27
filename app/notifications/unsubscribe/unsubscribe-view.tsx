@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -34,12 +35,20 @@ export function UnsubscribeView() {
                         <p className="text-sm text-muted-foreground">
                             In a real email, this button stops all alert emails. Nothing was unsubscribed.
                         </p>
+                        <Button asChild variant="outline">
+                            <Link href="/">Back to DigitoPub</Link>
+                        </Button>
                     </div>
                 ) : mutation.isSuccess ? (
-                    <p role="status" className="text-sm">
-                        You have been unsubscribed and will receive no further alerts. You can subscribe
-                        again at any time from a journal page.
-                    </p>
+                    <div className="space-y-4">
+                        <p role="status" className="text-sm">
+                            You have been unsubscribed and will receive no further alerts. You can subscribe
+                            again at any time from a journal page.
+                        </p>
+                        <Button asChild variant="outline">
+                            <Link href="/">Back to DigitoPub</Link>
+                        </Button>
+                    </div>
                 ) : (
                     <>
                         <p className="text-sm text-muted-foreground">

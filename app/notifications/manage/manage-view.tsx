@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Settings2 } from "lucide-react"
 import { toast } from "sonner"
@@ -279,6 +280,9 @@ export function ManageView() {
                         In a real email, this page shows the subscriber&apos;s alert preferences. Preference
                         changes are not saved from a test email.
                     </p>
+                    <Button asChild variant="outline">
+                        <Link href="/">Back to DigitoPub</Link>
+                    </Button>
                 </div>
             </Shell>
         )

@@ -109,6 +109,9 @@ export function ConfirmView() {
                     <p className="text-sm text-muted-foreground">
                         In a real invitation, this button confirms the subscription. Nothing was changed.
                     </p>
+                    <Button asChild variant="outline">
+                        <Link href="/">Back to DigitoPub</Link>
+                    </Button>
                 </div>
             </Shell>
         )
@@ -121,12 +124,17 @@ export function ConfirmView() {
                 <div className="rounded-xl border border-border/60 bg-card p-5 space-y-4">
                     <p role="status" className="text-sm">
                         {status === "confirmed"
-                            ? "Your subscription is confirmed. You will now receive publication alerts."
+                            ? "Thank you, your subscription is confirmed. You will receive alerts for new issues and articles in your fields."
                             : "This subscription is already active."}
                     </p>
-                    <Button asChild variant="outline">
-                        <Link href={manage_url}>Manage preferences</Link>
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button asChild>
+                            <Link href="/journals">Browse journals</Link>
+                        </Button>
+                        <Button asChild variant="outline">
+                            <Link href={manage_url}>Manage preferences</Link>
+                        </Button>
+                    </div>
                 </div>
             </Shell>
         )
