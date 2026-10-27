@@ -1,0 +1,91 @@
+name: Scheduler
+
+# Calls the production cron endpoints (#235). The Hostinger host has no
+# crontab, so every recurring job is triggered over HTTP; this workflow is
+# that trigger. Schedule and endpoint semantics: docs/ops/cron-schedule.md.
+#
+# Needs the repository secret CRON_SECRET (same value as production).
+# 200 = done, 207 = partial (more work next run), 429 = another run holds
+# the job lock, 503 = job disabled on the server: all expected. Anything
+# else fails the run, which shows in the Actions tab.
+#
+# Safe by design: detection and digests only create DRAFT campaigns; the
+# send job only sends campaigns an admin has approved.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # notifications send queue
+    - cron: "*/10 * * * *"  # OJS write queue (push-sync)
+    - cron: "*/15 * * * *"  # OJS journals sync + snapshots
+    - cron: "*/30 * * * *"  # publication detection
+    - cron: "0 2 * * *"     # daily metrics
+    - cron: "0 3 1 * *"     # monthly metrics rollup
+    - cron: "0 4 * * *"     # user (ORCID) metrics
+    - cron: "0 5 * * 0"     # event retention cleanup
+    - cron: "0 7 * * *"     # article digests
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Job to run now
+        required: true
+        type: choice
+        options: [send, push-sync, ojs-sync, detect, metrics-daily, metrics-monthly, metrics-user, retention, digests]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduler-${{ github.event.schedule || inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call the endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SCHEDULE: ${{ github.event.schedule }}
+          JOB: ${{ inputs.job }}
+          SITE: https://digitopub.com
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET}" ]; then echo "::error::Repository secret CRON_SECRET is not set"; exit 1; fi
+          if [ -z "${JOB}" ]; then
+            case "${SCHEDULE}" in
+              "*/5 * * * *")  JOB=send ;;
+              "*/10 * * * *") JOB=push-sync ;;
+              "*/15 * * * *") JOB=ojs-sync ;;
+              "*/30 * * * *") JOB=detect ;;
+              "0 2 * * *")    JOB=metrics-daily ;;
+              "0 3 1 * *")    JOB=metrics-monthly ;;
+              "0 4 * * *")    JOB=metrics-user ;;
+              "0 5 * * 0")    JOB=retention ;;
+              "0 7 * * *")    JOB=digests ;;
+              *) echo "::error::Unknown schedule '${SCHEDULE}'"; exit 1 ;;
+            esac
+          fi
+          case "${JOB}" in
+            send)            METHOD=POST; PATH_=/api/notifications/cron/send ;;
+            push-sync)       METHOD=POST; PATH_=/api/ojs/cron/push-sync ;;
+            ojs-sync)        METHOD=GET;  PATH_=/api/ojs/sync ;;
+            detect)          METHOD=POST; PATH_=/api/notifications/cron/detect ;;
+            metrics-daily)   METHOD=POST; PATH_=/api/metrics/cron/daily ;;
+            metrics-monthly) METHOD=POST; PATH_=/api/metrics/cron/monthly ;;
+            metrics-user)    METHOD=POST; PATH_=/api/metrics/cron/user ;;
+            retention)       METHOD=POST; PATH_=/api/metrics/cron/retention ;;
+            digests)         METHOD=POST; PATH_=/api/notifications/cron/digests ;;
+            *) echo "::error::Unknown job '${JOB}'"; exit 1 ;;
+          esac
+          status=$(curl -sS -o body.json -w '%{http_code}' -X "${METHOD}" -m 290 \
+            -H "Authorization: Bearer ${CRON_SECRET}" "${SITE}${PATH_}" || echo 000)
+          echo "${JOB}: ${METHOD} ${PATH_} -> HTTP ${status}"
+          head -c 1500 body.json; echo
+          echo "**${JOB}** ${METHOD} \`${PATH_}\` → HTTP ${status}" >> "$GITHUB_STEP_SUMMARY"
+          case "${status}" in
+            200|207) ;;
+            429) echo "::notice::${JOB}: another run holds the lock; skipped" ;;
+            503) echo "::notice::${JOB}: disabled on the server; skipped" ;;
+            *) echo "::error::${JOB} failed with HTTP ${status}"; exit 1 ;;
+          esac

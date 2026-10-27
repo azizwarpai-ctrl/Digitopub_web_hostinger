@@ -35,7 +35,21 @@ This read mirror uses `OJS_DATABASE_*`. It is separate from #234's `POST /api/oj
 
 To verify recovery, check admin **Sync health** for a recent successful `ojs_journals_sync`, then compare `GET /api/journals/ojbr` with OJS and open the public OJBR page. The current OJS description and cover should be present, `last_synced_at` should have advanced, and `field` should be unchanged.
 
-## Exact commands (hPanel cron / external scheduler)
+## Scheduler: GitHub Actions (#235)
+
+`.github/workflows/scheduler.yml` triggers every job above on its schedule
+(one cron trigger per row), using the repository secret `CRON_SECRET`
+(same value as production). Run any job by hand from **Actions → Scheduler →
+Run workflow → job**. 200/207 = done, 429 = lock held (skipped), 503 = job
+disabled (skipped); any other status fails the run, which shows in Actions.
+GitHub can start scheduled runs a few minutes late; every job here tolerates
+that. If `CRON_SECRET` is rotated, update the repository secret too.
+
+Before this workflow existed, no scheduler was configured: until 2026-10-27
+the ledger shows only drift-triggered OJS syncs, and the notification and
+metrics jobs had never run.
+
+## Exact commands (manual fallback)
 
 ```bash
 # every 15 minutes
