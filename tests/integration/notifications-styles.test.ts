@@ -102,7 +102,7 @@ describe("style gallery routes", () => {
         expect(res.status).toBe(200)
         const { data } = await res.json()
         expect(data.skipped).toEqual(["notify_welcome"])
-        expect(data.applied).toHaveLength(7)
+        expect(data.applied).toHaveLength(8)
 
         const modern = buildTemplateSet(EMAIL_STYLES.modern)
         expect(db.templates.get("notify_new_issue")!.html_content).toBe(modern.notify_new_issue.html_content)

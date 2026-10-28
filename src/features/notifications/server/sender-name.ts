@@ -12,13 +12,22 @@ import { prisma } from "@/src/lib/db/config"
 import { cleanSenderName } from "@/src/lib/email/sender-display-name"
 
 import type { CampaignPayload, IssueSnapshot } from "../types/notification-types"
+import type { InvitationJournal } from "./invitation-vars"
+
+/** The campaign's journal (`payload.journal_id`), or null. */
+export async function campaignJournal(campaign: Pick<NotificationCampaign, "payload">): Promise<InvitationJournal | null> {
+    const id = ((campaign.payload ?? {}) as CampaignPayload).journal_id
+    if (!id) return null
+    const journal = await prisma.journal.findUnique({
+        where: { id: BigInt(id) },
+        select: { title: true, ojs_path: true, invitation_scope: true },
+    })
+    return journal ? { title: journal.title, ojs_path: journal.ojs_path ?? null, invitation_scope: journal.invitation_scope ?? null } : null
+}
 
 /** Title of the campaign's journal (`payload.journal_id`), or null. */
 export async function campaignJournalTitle(campaign: Pick<NotificationCampaign, "payload">): Promise<string | null> {
-    const id = ((campaign.payload ?? {}) as CampaignPayload).journal_id
-    if (!id) return null
-    const journal = await prisma.journal.findUnique({ where: { id: BigInt(id) }, select: { title: true } })
-    return journal?.title ?? null
+    return (await campaignJournal(campaign))?.title ?? null
 }
 
 /**

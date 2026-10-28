@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("server-only", () => ({}))
 
-const journals = new Map<bigint, string>([[BigInt(3), "Journal of Orthodontic Research"]])
+const journals = new Map<bigint, { title: string; ojs_path: string; invitation_scope: string }>([
+    [BigInt(3), { title: "Journal of Orthodontic Research", ojs_path: "jor", invitation_scope: "a journal dedicated to orthodontics" }],
+])
 const prismaMock: any = {
-    journal: { findUnique: vi.fn(async ({ where }: any) => (journals.has(where.id) ? { title: journals.get(where.id) } : null)) },
+    journal: { findUnique: vi.fn(async ({ where }: any) => (journals.has(where.id) ? { ...journals.get(where.id) } : null)) },
 }
 vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
 
@@ -14,7 +16,7 @@ vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail, cl
 const { automaticSenderName, senderNameFor } = await import("@/src/features/notifications/server/sender-name")
 const { cleanSenderName, defaultSenderName } = await import("@/src/lib/email/sender-display-name")
 const { SmtpNotificationTransport, notificationFromAddress } = await import("@/src/lib/email/notification-transport")
-const { campaignJournalTitle } = await import("@/src/features/notifications/server/sender-name")
+const { campaignJournalTitle, campaignJournal } = await import("@/src/features/notifications/server/sender-name")
 const { composeMessage } = await import("@/src/features/notifications/server/compose")
 const { TEMPLATE_SET } = await import("@/src/features/notifications/server/template-set")
 const { EMAIL_STYLES } = await import("@/src/features/notifications/server/email-styles")
@@ -106,5 +108,31 @@ describe("sender display name", () => {
         const g = (await composeMessage(general, sub))!
         expect(g.fromName).toBeNull()
         expect(g.subject).toBe("Invitation: publication alerts in Orthodontics")
+    })
+
+    it("composes the journal invitation template with salutation, journal vars and a long expiry date", async () => {
+        const campaign = { id: 6n, type: "invitation", subject_override: null, payload: { import_id: "9", journal_id: "3" } } as any
+        const journal = await campaignJournal(campaign)
+        const journalTitle = await campaignJournalTitle(campaign)
+        const t = TEMPLATE_SET.notify_journal_invitation
+        const ctx = {
+            campaign,
+            template: { subject: t.subject, html_content: t.html_content, text_content: t.text_content },
+            events: new Map(),
+            rules: [],
+            disciplineNames: new Map(),
+            publisherAddress: "DigitoPub, 5 Real Road",
+            style: EMAIL_STYLES.classic,
+            journalTitle,
+            journal,
+            senderName: await senderNameFor(campaign, [], journalTitle),
+        } as any
+        const sub = { id: 0n, email: "a@example.org", name: "Dr A", status: "pending", token_version: 0, issue_alerts: true, article_frequency: "weekly", journal_ids: [], discipline_ids: [1n] }
+        const m = (await composeMessage(ctx, sub))!
+        expect(m.subject).toBe("Stay connected with Journal of Orthodontic Research (JOR)")
+        expect(m.html).toContain("Dear Dr. A")
+        expect(m.html).not.toContain("Dr. Dr.")
+        expect(m.html).toContain(", a journal dedicated to orthodontics.")
+        expect(m.text).toMatch(/\d{1,2} [A-Z][a-z]+ \d{4}/)
     })
 })

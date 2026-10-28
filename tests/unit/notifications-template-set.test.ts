@@ -9,9 +9,9 @@ import { extractAllVariables, renderHtmlTemplate, renderTemplate } from "@/src/l
 const entries = Object.entries(TEMPLATE_SET)
 
 describe("academic template set (#203)", () => {
-    it("ships all eight templates", () => {
+    it("ships all nine templates", () => {
         expect(Object.keys(TEMPLATE_SET).sort()).toEqual([
-            "notify_custom_message", "notify_daily_digest", "notify_import_invitation", "notify_new_issue", "notify_preferences_updated",
+            "notify_custom_message", "notify_daily_digest", "notify_import_invitation", "notify_journal_invitation", "notify_new_issue", "notify_preferences_updated",
             "notify_subscription_confirm", "notify_weekly_digest", "notify_welcome",
         ])
     })
@@ -82,16 +82,16 @@ describe("seedNotificationTemplates", () => {
     it("creates missing templates and keeps edited ones unless forced", async () => {
         const { db, rows } = fakeDb(["notify_new_issue"])
         const first = await seedNotificationTemplates(db as any)
-        expect(first.created).toHaveLength(7)
+        expect(first.created).toHaveLength(8)
         expect(first.kept).toEqual(["notify_new_issue"])
         expect(rows.get("notify_new_issue")!.subject).toBe("edited")
 
         const again = await seedNotificationTemplates(db as any)
         expect(again.created).toHaveLength(0)
-        expect(rows.size).toBe(8)
+        expect(rows.size).toBe(9)
 
         const forced = await seedNotificationTemplates(db as any, { force: true })
-        expect(forced.restored).toHaveLength(8)
+        expect(forced.restored).toHaveLength(9)
         expect(rows.get("notify_new_issue")!.subject).toBe(TEMPLATE_SET.notify_new_issue.subject)
     })
 })

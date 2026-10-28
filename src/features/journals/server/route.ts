@@ -337,7 +337,9 @@ app.get("/:id", zValidator("param", journalSlugParamSchema), async (c) => {
       return c.json({ success: false, error: "Journal not found" }, 404)
     }
 
-    const serializedJournal = serializeRecord(journal) as ReturnType<typeof serializeRecord> & { contact_email?: string; cover_image_url?: string | null }
+    // invitation_scope is admin-only email copy (#231); the record here is unselected.
+    const { invitation_scope: _invitationScope, ...publicJournal } = journal
+    const serializedJournal = serializeRecord(publicJournal) as ReturnType<typeof serializeRecord> & { contact_email?: string; cover_image_url?: string | null }
     serializedJournal.cover_image_url = normalizeOjsAssetUrl(serializedJournal.cover_image_url)
 
     if (journal.ojs_id) {

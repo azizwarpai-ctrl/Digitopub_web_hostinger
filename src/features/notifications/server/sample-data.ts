@@ -8,6 +8,7 @@ import type { ArticleSnapshot, IssueSnapshot } from "../types/notification-types
 import { SITE_NAME, getAppBaseUrl } from "./config"
 import { EMAIL_STYLES, type EmailStyle } from "./email-styles"
 import { buildArticles, buildEditorNote, buildMessage, buildToc } from "./render-blocks"
+import { journalInvitationVars } from "./invitation-vars"
 
 const EDITOR_NOTE = "This issue gathers recent work on digital workflows in orthodontic diagnosis and treatment."
 
@@ -89,6 +90,17 @@ export function sampleVariables(templateName: string, style: EmailStyle = EMAIL_
                 ...common,
                 confirm_url: `${base()}/notifications/confirm?token=sample`, expires_on: "2026-11-20", inviter_org: SITE_NAME,
                 primary_discipline: "Orthodontics", selected_journals: ISSUE.journal_title, selected_disciplines: "Orthodontics, Endodontics",
+            }
+        case "notify_journal_invitation":
+            return {
+                ...common,
+                confirm_url: `${base()}/notifications/confirm?token=sample`, expires_on: "23 November 2026",
+                salutation: "Dr. Jane Doe",
+                ...journalInvitationVars({
+                    title: "International Journal of Maxillofacial Prosthetics",
+                    ojs_path: "ijmp",
+                    invitation_scope: "an international, peer-reviewed, open-access journal dedicated to advancing research and clinical practice in maxillofacial prosthetics and rehabilitation",
+                }),
             }
         case "notify_custom_message": {
             const message = buildMessage(SAMPLE_MESSAGE(), style)

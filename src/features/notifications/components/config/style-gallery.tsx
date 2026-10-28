@@ -36,6 +36,7 @@ const TEMPLATE_LABELS: Record<StylePreviewTemplate, string> = {
   notify_daily_digest: "Daily digest",
   notify_subscription_confirm: "Subscription confirmation",
   notify_import_invitation: "Import invitation",
+  notify_journal_invitation: "Journal invitation",
   notify_welcome: "Welcome",
   notify_preferences_updated: "Preferences updated",
   notify_custom_message: "Custom message",
@@ -78,7 +79,7 @@ export function StyleGallery() {
         <CardHeader>
           <CardTitle>Choose a design</CardTitle>
           <CardDescription>
-            Each style changes only the look of the seven alert emails. Subjects, plain-text versions and the
+            Each style changes only the look of the nine alert emails. Subjects, plain-text versions and the
             required footer stay the same. To change the wording, edit the templates in{" "}
             <Link href="/admin/email-templates" className="underline underline-offset-4">
               Email templates
@@ -141,7 +142,7 @@ export function StyleGallery() {
           <AlertDialogHeader>
             <AlertDialogTitle>Apply the {pending?.name} style?</AlertDialogTitle>
             <AlertDialogDescription>
-              The design of the seven alert emails is replaced. Subjects and plain-text versions are kept, and
+              The design of the nine alert emails is replaced. Subjects and plain-text versions are kept, and
               future emails use the new style. You can switch back at any time.
             </AlertDialogDescription>
           </AlertDialogHeader>

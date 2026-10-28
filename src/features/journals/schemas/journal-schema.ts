@@ -15,9 +15,12 @@ const journalBaseSchema = z.object({
   cover_image_url: z.url().optional().nullable(),
   website_url: z.url().optional().nullable(),
   status: z.enum(["active", "inactive", "suspended"]),
+  // #231: scope sentence for the journal's alert invitation; blank clears it.
+  invitation_scope: z.string().trim().max(500).transform((v) => v || null).optional().nullable(),
 })
 
-export const journalCreateSchema = journalBaseSchema.extend({
+// invitation_scope is set on the edit page only (#231), so create does not accept it.
+export const journalCreateSchema = journalBaseSchema.omit({ invitation_scope: true }).extend({
   submission_fee: journalBaseSchema.shape.submission_fee.optional().default(0),
   publication_fee: journalBaseSchema.shape.publication_fee.optional().default(0),
   status: journalBaseSchema.shape.status.optional().default("active"),

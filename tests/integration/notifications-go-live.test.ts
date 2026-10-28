@@ -104,17 +104,17 @@ describe("go-live routes: auth", () => {
 })
 
 describe("install starter data", () => {
-    it("seeds disciplines, global rules and all eight templates, and is safe to repeat", async () => {
+    it("seeds disciplines, global rules and all nine templates, and is safe to repeat", async () => {
         const first = await (await post("/install-defaults")).json()
         expect(first.success).toBe(true)
         expect(first.data.disciplines).toBeGreaterThan(0)
         expect(first.data.rules).toBe(2)
-        expect(first.data.templatesCreated).toBe(8)
+        expect(first.data.templatesCreated).toBe(9)
 
         db.templates.get("notify_new_issue")!.subject = "edited by an admin"
         const again = await (await post("/install-defaults")).json()
         expect(again.data.templatesCreated).toBe(0)
-        expect(again.data.templatesKept).toBe(8)
+        expect(again.data.templatesKept).toBe(9)
         expect(db.templates.get("notify_new_issue")!.subject).toBe("edited by an admin")
         expect(db.rules.size).toBe(2)
     })

@@ -204,6 +204,7 @@ export const STYLE_PREVIEW_TEMPLATES = [
     "notify_daily_digest",
     "notify_subscription_confirm",
     "notify_import_invitation",
+    "notify_journal_invitation",
     "notify_welcome",
     "notify_preferences_updated",
     "notify_custom_message",

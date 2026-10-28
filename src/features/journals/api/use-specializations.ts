@@ -86,6 +86,7 @@ export interface JournalSpecializationDetail {
   field: string
   ojs_id: string | null
   ojs_path: string | null
+  invitation_scope: string | null
   sync: SpecializationSyncStatus
 }
 
@@ -207,6 +208,22 @@ export function useRetrySpecializationSync() {
     onSuccess: (sync) => {
       if (sync.state === "synced") toast.success("Synced to OJS")
       else toast.warning("Retry did not complete; see sync status for details")
+      invalidateAll(queryClient)
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+}
+
+/** Saves the scope sentence used in this journal's alert invitation (#231); blank clears it. */
+export function useUpdateInvitationScope() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ journalId, scope }: { journalId: string; scope: string }): Promise<unknown> => {
+      const res = await client.journals[":id"].$patch({ param: { id: journalId }, json: { invitation_scope: scope } })
+      return (await unwrap<unknown>(res, "Failed to save the invitation text")).data
+    },
+    onSuccess: () => {
+      toast.success("Invitation text saved")
       invalidateAll(queryClient)
     },
     onError: (error: Error) => toast.error(error.message),
