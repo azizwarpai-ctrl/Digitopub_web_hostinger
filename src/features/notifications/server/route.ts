@@ -18,7 +18,9 @@ import {
     termMappingSchema,
 } from "../schemas/notification-schemas"
 import { getImportMaxBytes } from "./config"
-import { campaignProgress, cancelCampaign, pauseCampaign, resumeCampaign } from "./send-service"
+import {
+    campaignProgress, cancelCampaign, listFailedDeliveries, pauseCampaign, queueSummary, resumeCampaign, retryFailedDeliveries,
+} from "./send-service"
 import {
     CampaignStateError,
     approveCampaign,
@@ -315,9 +317,27 @@ const app = new Hono()
         if (!p) return fail(c, "Campaign not found", 404)
         return c.json({ success: true, data: p })
     })
+    // ─── Failed deliveries and retry (#246) ───────────────────────────
+    .get("/campaigns/:id/failed", zValidator("param", idParamSchema), async (c) => {
+        const pagination = parsePagination(c)
+        const result = await listFailedDeliveries(BigInt(c.req.valid("param").id), pagination.offset, pagination.limit)
+        if (!result) return fail(c, "Campaign not found", 404)
+        return c.json(paginatedResponse(serializeMany(result.rows), result.total, pagination))
+    })
+    .post("/campaigns/:id/retry-failed", zValidator("param", idParamSchema), async (c) => {
+        const r = await retryFailedDeliveries(BigInt(c.req.valid("param").id))
+        if (!r.ok) return fail(c, r.error, r.notFound ? 404 : 409)
+        const message = r.retried
+            ? `${r.retried} failed message(s) queued again; they go out within the daily limit.`
+            : "No failed messages can be retried."
+        return c.json({ success: true, data: r, message })
+    })
 
     // ─── Overview & campaign review (#202) ────────────────────────────
-    .get("/overview", async (c) => c.json({ success: true, data: serializeRecord(await getOverview()) }))
+    .get("/overview", async (c) => {
+        const [overview, queue] = await Promise.all([getOverview(), queueSummary()])
+        return c.json({ success: true, data: serializeRecord({ ...overview, queue }) })
+    })
     .get("/campaigns", zValidator("query", campaignListQuerySchema), async (c) => {
         const pagination = parsePagination(c)
         const { rows, total } = await listCampaigns(c.req.valid("query"), pagination.offset, pagination.limit)
