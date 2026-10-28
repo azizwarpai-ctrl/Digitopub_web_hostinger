@@ -95,7 +95,75 @@ export interface CampaignProgress {
   failed: number
   skipped: number
   remaining: number
+  retrying: number
+  /** Messages from other campaigns that will go out first. */
+  ahead: number
+  retryable: number
+  starts_at: string | null
+  finishes_at: string | null
   eta_minutes: number | null
+  today: { sent: number; limit: number; resets_at: string | null }
+}
+
+export interface FailedDelivery {
+  id: string
+  email: string
+  subscriber_status: string
+  attempts: number
+  reason: string | null
+  failed_at: string | null
+  retryable: boolean
+}
+
+export interface RetryFailedResult {
+  ok: boolean
+  retried: number
+  excluded: { bounced: number; unsubscribed: number; other: number }
+  status: string
+}
+
+export interface QueueCampaign {
+  id: string
+  type: CampaignType
+  status: CampaignStatus
+  subject: string
+  pending: number
+  retrying: number
+  sent: number
+  failed: number
+  retryable: number
+  starts_at: string | null
+  finishes_at: string | null
+}
+
+export interface QueueSummary {
+  today: { sent: number; limit: number; resets_at: string | null }
+  limits: { perRun: number; perHour: number; perDay: number }
+  totals: { pending: number; retrying: number; sent: number; failed: number; retryable: number }
+  campaigns: QueueCampaign[]
+}
+
+/** "11 days 15 hours" from 24 h up, otherwise "3 hours 20 minutes" / "12 minutes". */
+export function formatDuration(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60000))
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`
+  if (minutes >= 24 * 60) {
+    const days = Math.floor(minutes / (24 * 60))
+    const hours = Math.round((minutes % (24 * 60)) / 60)
+    return hours > 0 ? `${plural(days, "day")} ${plural(hours, "hour")}` : plural(days, "day")
+  }
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `${plural(hours, "hour")} ${plural(mins, "minute")}` : plural(hours, "hour")
+  }
+  return plural(minutes, "minute")
+}
+
+/** "in 2 hours 5 minutes" for a future time, "now" when it has passed. */
+export function formatRelative(iso: string, now = Date.now()): string {
+  const diff = new Date(iso).getTime() - now
+  return diff <= 60000 ? "now" : `in ${formatDuration(diff)}`
 }
 
 export interface NotificationOverview {
@@ -103,6 +171,7 @@ export interface NotificationOverview {
   sent_7d: number
   drafts_awaiting: number
   recent_campaigns: CampaignRow[]
+  queue: QueueSummary
 }
 
 export interface CampaignFilters {
@@ -193,12 +262,27 @@ export function useCampaignProgress(id: string, enabled: boolean, poll = enabled
   })
 }
 
+export function useFailedDeliveries(id: string, page: number, enabled: boolean, limit = 20) {
+  return useQuery({
+    queryKey: ["notification-campaign-failed", id, page, limit],
+    enabled,
+    queryFn: async () => {
+      const res = await client.notifications.campaigns[":id"].failed.$get({
+        param: { id },
+        query: { page: String(page), limit: String(limit) },
+      })
+      return parseRpcResponse<{ data: FailedDelivery[]; pagination: Pagination }>(res, "Failed to load failed messages")
+    },
+  })
+}
+
 function useInvalidateCampaign() {
   const queryClient = useQueryClient()
   return (id: string) => {
     queryClient.invalidateQueries({ queryKey: ["notification-campaign", id] })
     queryClient.invalidateQueries({ queryKey: ["notification-campaign-preview", id] })
     queryClient.invalidateQueries({ queryKey: ["notification-campaign-progress", id] })
+    queryClient.invalidateQueries({ queryKey: ["notification-campaign-failed", id] })
     queryClient.invalidateQueries({ queryKey: ["notification-campaigns"] })
     queryClient.invalidateQueries({ queryKey: ["notification-overview"] })
   }
@@ -216,6 +300,23 @@ export function useUpdateCampaign() {
       invalidate(v.id)
     },
     onError: (error: Error) => toast.error(error.message || "Failed to save campaign"),
+  })
+}
+
+export function useRetryFailed() {
+  const invalidate = useInvalidateCampaign()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const res = await client.notifications.campaigns[":id"]["retry-failed"].$post({ param: { id } })
+      return parseRpcResponse<{ data: RetryFailedResult; message?: string }>(res, "Failed to retry failed messages")
+    },
+    onSuccess: (body, v) => {
+      toast.success(body.message ?? "Failed messages queued again")
+      const { bounced, unsubscribed } = body.data.excluded
+      if (bounced + unsubscribed > 0) toast.info(`Not retried: ${bounced} bounced, ${unsubscribed} unsubscribed`)
+      invalidate(v.id)
+    },
+    onError: (error: Error) => toast.error(error.message || "Failed to retry failed messages"),
   })
 }
 

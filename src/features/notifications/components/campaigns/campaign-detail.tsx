@@ -3,8 +3,19 @@
 import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
-import { ArrowLeft, CalendarClock, Pause, Play, Send, XCircle } from "lucide-react"
+import { ArrowLeft, CalendarClock, ChevronDown, ChevronRight, Pause, Play, RotateCw, Send, XCircle } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -21,6 +32,7 @@ import { Label } from "@/components/ui/label"
 import { PageHeader } from "@/components/ui/page-header"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -29,6 +41,10 @@ import {
   useCampaignPreview,
   useCampaignProgress,
   useCancelCampaign,
+  useFailedDeliveries,
+  useRetryFailed,
+  formatDuration,
+  formatRelative,
   usePauseCampaign,
   useResumeCampaign,
   useSendCampaignTest,
@@ -264,8 +280,97 @@ function DraftEditor({ detail }: { detail: CampaignDetail }) {
   )
 }
 
+const FAILED_PAGE_SIZE = 20
+
+function FailedMessages({ id }: { id: string }) {
+  const [open, setOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, error } = useFailedDeliveries(id, page, open, FAILED_PAGE_SIZE)
+  const totalPages = data?.pagination.totalPages ?? 1
+  const panelId = `failed-messages-${id}`
+
+  return (
+    <div className="space-y-3">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? (
+          <ChevronDown className="mr-2 h-4 w-4" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="mr-2 h-4 w-4" aria-hidden="true" />
+        )}
+        Failed messages
+      </Button>
+      <div id={panelId} hidden={!open}>
+        {open &&
+          (isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : isError || !data ? (
+            <p className="text-sm text-destructive">{error?.message || "Failed to load failed messages"}</p>
+          ) : data.data.length === 0 && page > 1 ? (
+            // A retry can shrink the list below the current page.
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <p>No failed messages on this page.</p>
+              <Button variant="outline" size="sm" onClick={() => setPage(1)}>
+                Back to the first page
+              </Button>
+            </div>
+          ) : data.data.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No failed messages.</p>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead className="text-right">Attempts</TableHead>
+                    <TableHead>Retry</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.data.map((f) => (
+                    <TableRow key={f.id}>
+                      <TableCell className="break-all">{f.email}</TableCell>
+                      <TableCell className="max-w-xs break-words text-muted-foreground">{f.reason ?? "-"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{f.attempts}</TableCell>
+                      <TableCell>
+                        <Badge variant={f.retryable ? "secondary" : "outline"}>
+                          {f.retryable ? "Retryable" : "Not retryable"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground" aria-live="polite">
+                  Page {data.pagination.page} of {totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    Previous
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          ))}
+      </div>
+    </div>
+  )
+}
+
 function ProgressPanel({ id, status }: { id: string; status: CampaignStatus }) {
-  const { data, isLoading } = useCampaignProgress(id, PROGRESS_STATUSES.includes(status), LIVE_STATUSES.includes(status))
+  const { data, isLoading, dataUpdatedAt } = useCampaignProgress(id, PROGRESS_STATUSES.includes(status), LIVE_STATUSES.includes(status))
+  const retry = useRetryFailed()
+  const [retryOpen, setRetryOpen] = useState(false)
   const queryClient = useQueryClient()
   // The send cron moves campaigns on by itself (queued → sending → sent): refresh the header and actions.
   useEffect(() => {
@@ -274,6 +379,24 @@ function ProgressPanel({ id, status }: { id: string; status: CampaignStatus }) {
   const total = data ? data.sent + data.failed + data.skipped + data.remaining : 0
   const done = data ? data.sent + data.failed + data.skipped : 0
   const percent = total > 0 ? Math.round((done / total) * 100) : 0
+
+  const estimate: string[] = []
+  if (data) {
+    const now = dataUpdatedAt
+    if (data.ahead > 0 && data.starts_at) {
+      estimate.push(
+        `Starts about ${formatRelative(data.starts_at, now)} (${data.ahead.toLocaleString()} messages queued ahead).`,
+      )
+    }
+    if (data.finishes_at) {
+      estimate.push(`Finishes in about ${formatDuration(new Date(data.finishes_at).getTime() - now)}.`)
+    } else if (data.remaining > 0 && data.status === "paused") {
+      estimate.push("Paused: no messages go out until the campaign is resumed.")
+    } else if (data.remaining > 0 && (data.status === "queued" || data.status === "sending")) {
+      estimate.push("Finish time unknown at the current limits.")
+    }
+    if (estimate.length) estimate.push("Estimates assume the current limits and queue, and may shift as other campaigns are queued.")
+  }
 
   return (
     <Card>
@@ -288,26 +411,67 @@ function ProgressPanel({ id, status }: { id: string; status: CampaignStatus }) {
           <>
             <Progress value={percent} aria-label="Delivery progress" />
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {[
-                ["Sent", data.sent],
-                ["Failed", data.failed],
-                ["Skipped", data.skipped],
-                ["Remaining", data.remaining],
-              ].map(([label, value]) => (
-                <div key={label as string}>
-                  <dt className="text-sm text-muted-foreground">{label}</dt>
-                  <dd className="text-2xl font-semibold tabular-nums">{(value as number).toLocaleString()}</dd>
-                </div>
-              ))}
+              <div>
+                <dt className="text-sm text-muted-foreground">Sent</dt>
+                <dd className="text-2xl font-semibold tabular-nums">{data.sent.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">Pending</dt>
+                <dd className="text-2xl font-semibold tabular-nums">
+                  {data.remaining.toLocaleString()}
+                  {data.retrying > 0 && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {data.retrying.toLocaleString()} retrying
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">Failed</dt>
+                <dd className="text-2xl font-semibold tabular-nums">{data.failed.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">Skipped</dt>
+                <dd className="text-2xl font-semibold tabular-nums">{data.skipped.toLocaleString()}</dd>
+              </div>
             </dl>
-            {data.remaining > 0 && data.eta_minutes != null && (
-              <p className="text-sm text-muted-foreground">
-                Estimated time remaining: about {Math.max(1, Math.round(data.eta_minutes))} minutes.
-              </p>
+            {estimate.length > 0 && <p className="text-sm text-muted-foreground">{estimate.join(" ")}</p>}
+            <p className="text-sm text-muted-foreground">
+              Daily limit: {data.today.limit.toLocaleString()} &middot; {data.today.sent.toLocaleString()} sent in the
+              last 24 h
+              {data.today.resets_at ? ` \u00b7 next slot at ${new Date(data.today.resets_at).toLocaleTimeString()}` : ""}
+            </p>
+            {data.retryable > 0 && (
+              <div>
+                <Button variant="outline" disabled={retry.isPending} onClick={() => setRetryOpen(true)}>
+                  <RotateCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Retry failed ({data.retryable.toLocaleString()})
+                </Button>
+              </div>
             )}
+            {data.failed > 0 && <FailedMessages id={id} />}
           </>
         )}
       </CardContent>
+
+      <AlertDialog open={retryOpen} onOpenChange={setRetryOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retry failed messages?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {data ? `${data.retryable.toLocaleString()} failed messages will be queued again. ` : ""}
+              Addresses that bounced or unsubscribed are left out. Messages go out within the daily limit, so
+              delivery may take some time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction disabled={retry.isPending} onClick={() => retry.mutate({ id })}>
+              {retry.isPending ? "Retrying..." : "Retry failed messages"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

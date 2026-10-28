@@ -14,10 +14,14 @@ const db = {
 function matches(row: Record<string, any>, where: Record<string, any> = {}): boolean {
     return Object.entries(where).every(([k, v]) => {
         if (k === "campaign") return matches(db.campaigns.find((c) => c.id === row.campaign_id)!, v)
+        if (k === "subscriber") return matches(db.subscribers.find((s) => s.id === row.subscriber_id)!, v)
+        // Relation filter on campaigns: { deliveries: { some: where } }.
+        if (k === "deliveries") return db.deliveries.some((d) => d.campaign_id === row.id && matches(d, v.some))
         if (v && typeof v === "object" && !(v instanceof Date) && typeof v !== "bigint") {
             if ("in" in v) return v.in.includes(row[k])
             if ("notIn" in v) return !v.notIn.includes(row[k])
             if ("gt" in v) return row[k] !== null && row[k] > v.gt
+            if ("lt" in v) return row[k] !== null && row[k] < v.lt
             if ("lte" in v) return row[k] !== null && row[k] <= v.lte
         }
         return row[k] === v
@@ -33,7 +37,19 @@ const table = (rows: () => Row[]) => ({
     findUnique: vi.fn(async ({ where }: any) => rows().find((r) => r.id === where.id) ?? null),
     findUniqueOrThrow: vi.fn(async ({ where }: any) => rows().find((r) => r.id === where.id)!),
     // Copies, like Prisma: later updates must not leak into rows already read.
-    findMany: vi.fn(async ({ where, take }: any = {}) => rows().filter((r) => matches(r, where)).slice(0, take ?? Infinity).map((r) => ({ ...r }))),
+    findMany: vi.fn(async ({ where, take, skip, orderBy, select }: any = {}) => {
+        let hits = rows().filter((r) => matches(r, where))
+        if (orderBy?.id === "asc") hits = [...hits].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        return hits.slice(skip ?? 0, (skip ?? 0) + (take ?? Infinity)).map((r) => ({
+            ...r,
+            ...(select?.subscriber ? { subscriber: db.subscribers.find((s) => s.id === r.subscriber_id) } : {}),
+        }))
+    }),
+    findFirst: vi.fn(async ({ where, orderBy }: any = {}) => {
+        const hits = rows().filter((r) => matches(r, where))
+        if (orderBy?.id === "asc") hits.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        return hits[0] ? { ...hits[0] } : null
+    }),
     count: vi.fn(async ({ where }: any) => rows().filter((r) => matches(r, where)).length),
     update: vi.fn(async ({ where, data }: any) => apply(rows().find((r) => r.id === where.id)!, data)),
     updateMany: vi.fn(async ({ where, data }: any) => {
@@ -48,6 +64,14 @@ const template = {
     text_content: "Hi {{recipient_name}}\n{{toc_text}}", variables: [],
 }
 const prismaMock: any = {
+    // Array form: the operations are already started, so awaiting them in order is enough.
+    // Callback form: the callback runs against the same in-memory tables.
+    $transaction: vi.fn(async (arg: Promise<unknown>[] | ((tx: any) => Promise<unknown>)) => {
+        if (typeof arg === "function") return arg(prismaMock)
+        const out: unknown[] = []
+        for (const op of arg) out.push(await op)
+        return out
+    }),
     notificationCampaign: table(() => db.campaigns),
     notificationDelivery: {
         ...table(() => db.deliveries),
@@ -75,7 +99,10 @@ vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
 process.env.NOTIFY_TOKEN_SECRET = "notify-test-secret"
 process.env.NEXT_PUBLIC_APP_URL = "https://digitopub.test"
 
-import { runSendBatch, pauseCampaign, resumeCampaign, cancelCampaign, campaignProgress } from "@/src/features/notifications/server/send-service"
+import {
+    runSendBatch, pauseCampaign, resumeCampaign, cancelCampaign, campaignProgress,
+    retryFailedDeliveries, listFailedDeliveries, queueSummary,
+} from "@/src/features/notifications/server/send-service"
 import type { NotificationMessage, NotificationTransport, SendOutcome } from "@/src/lib/email/notification-transport"
 
 class FakeTransport implements NotificationTransport {
@@ -197,11 +224,127 @@ describe("campaign controls", () => {
         await runSendBatch(new FakeTransport(), { now: NOW, limits })
 
         const progress = await campaignProgress(1n, { perRun: 10, perHour: 60, perDay: 1440 })
-        expect(progress).toMatchObject({ sent: 10, queued: 15, remaining: 15, eta_minutes: 15 })
+        expect(progress).toMatchObject({ sent: 10, queued: 15, remaining: 15 })
+        // 10 already went out this hour (perHour 60): the last 5 fit in the next 5-minute tick.
+        expect(progress!.eta_minutes).toBeLessThanOrEqual(10)
+        expect(progress!.finishes_at).not.toBeNull()
 
         expect(await cancelCampaign(1n)).toEqual({ ok: true, status: "cancelled" })
         expect(db.deliveries.filter((d) => d.status === "skipped")).toHaveLength(15)
         expect((await cancelCampaign(1n)).ok).toBe(false)
         expect((await resumeCampaign(1n)).ok).toBe(false)
+    })
+})
+
+describe("retry failed deliveries (#246)", () => {
+    /** One failed delivery per entry, owned by a subscriber with that status. */
+    function seedFailed(statuses: string[], type = "issue", campaignStatus = "sent") {
+        seed(statuses.length)
+        statuses.forEach((st, i) => {
+            db.subscribers[i].status = st
+            Object.assign(db.deliveries[i], { status: "failed", attempts: 3, last_error: "550 mailbox full" })
+        })
+        Object.assign(db.campaigns[0], { type, status: campaignStatus, failed_count: statuses.length })
+    }
+
+    it("re-queues only deliveries whose subscriber can still receive the campaign", async () => {
+        seedFailed(["active", "bounced", "unsubscribed"])
+        expect(await retryFailedDeliveries(1n)).toEqual({
+            ok: true, retried: 1, excluded: { bounced: 1, unsubscribed: 1, other: 0 }, status: "sending",
+        })
+        expect(db.deliveries[0]).toMatchObject({ status: "queued", attempts: 0, last_error: null })
+        expect(db.deliveries[1].status).toBe("failed")
+        expect(db.deliveries[2].status).toBe("failed")
+        expect(db.campaigns[0]).toMatchObject({ status: "sending", failed_count: 2 })
+    })
+
+    it("treats pending as the eligible status for an invitation campaign", async () => {
+        seedFailed(["pending", "active"], "invitation")
+        const r = await retryFailedDeliveries(1n)
+        expect(r).toEqual({ ok: true, retried: 1, excluded: { bounced: 0, unsubscribed: 0, other: 1 }, status: "sending" })
+        expect(db.deliveries[0].status).toBe("queued")
+        expect(db.deliveries[1].status).toBe("failed")
+    })
+
+    // Review fix: a send run that marked the campaign "sent" just before a retry must not strand the re-queued rows.
+    it("re-opens a sent campaign that still has queued rows, and sends them", async () => {
+        seedFailed(["active", "active"])
+        db.deliveries.forEach((d) => Object.assign(d, { status: "queued", attempts: 0, last_error: null }))
+        db.campaigns[0].status = "sent"
+        const r = await runSendBatch(new FakeTransport(), { now: NOW, limits })
+        expect(r.sent).toBe(2)
+        expect(db.campaigns[0].status).toBe("sent")
+        expect(db.deliveries.every((d) => d.status === "sent")).toBe(true)
+    })
+
+    // Review fix: the status change is guarded, so a cancel between the read and the write is never overwritten.
+    it("aborts without touching deliveries when the campaign changed meanwhile", async () => {
+        seedFailed(["active"])
+        prismaMock.notificationCampaign.updateMany.mockImplementationOnce(async () => ({ count: 0 }))
+        const r = await retryFailedDeliveries(1n)
+        expect(r.ok).toBe(false)
+        expect(db.deliveries[0].status).toBe("failed")
+        expect(db.campaigns[0].failed_count).toBe(1)
+    })
+
+    it("refuses draft and cancelled campaigns and reports an unknown id", async () => {
+        for (const status of ["draft", "cancelled"]) {
+            seedFailed(["active"], "issue", status)
+            expect((await retryFailedDeliveries(1n)).ok).toBe(false)
+            expect(db.deliveries[0].status).toBe("failed")
+        }
+        expect(await retryFailedDeliveries(999n)).toMatchObject({ ok: false, notFound: true })
+    })
+
+    it("sends the re-queued rows through the normal limits", async () => {
+        seedFailed(Array(8).fill("active"))
+        expect(await retryFailedDeliveries(1n)).toMatchObject({ ok: true, retried: 8 })
+        const t = new FakeTransport()
+        const r = await runSendBatch(t, { now: NOW, limits: { perRun: 3, perHour: 1000, perDay: 1000 } })
+        expect(r.sent).toBe(3)
+        expect(t.sent).toHaveLength(3)
+        expect(r.remaining).toBe(5)
+        expect(db.campaigns[0].status).toBe("sending")
+    })
+
+    it("lists failed deliveries with a cleaned reason, retryable flag, total and pagination", async () => {
+        seedFailed(["active", "bounced", "active", "active", "active"])
+        db.deliveries[0].last_error = "421  try\n   later\t please"
+        db.deliveries[1].last_error = "x".repeat(300)
+        db.deliveries[2].last_error = null
+
+        const all = await listFailedDeliveries(1n, 0, 10)
+        expect(all!.total).toBe(5)
+        expect(all!.rows[0]).toMatchObject({ email: "r0@example.org", reason: "421 try later please", attempts: 3, retryable: true })
+        expect(all!.rows[1]).toMatchObject({ email: "r1@example.org", retryable: false })
+        expect(all!.rows[1].reason).toHaveLength(200)
+        expect(all!.rows[2].reason).toBe("Unknown error")
+
+        const page = await listFailedDeliveries(1n, 1, 2)
+        expect(page!.total).toBe(5)
+        expect(page!.rows.map((r) => r.email)).toEqual(["r1@example.org", "r2@example.org"])
+        expect(await listFailedDeliveries(999n, 0, 10)).toBeNull()
+    })
+})
+
+describe("queueSummary (#246)", () => {
+    it("counts the last 24 h of sends, sums active and paused campaigns, and puts paused last", async () => {
+        seed(5)
+        const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3600_000)
+        // Campaign 1: paused, one sent, four queued.
+        Object.assign(db.campaigns[0], { status: "paused" })
+        Object.assign(db.deliveries[0], { status: "sent", sent_at: hoursAgo(2) })
+        // Campaign 2: sending, two queued. Campaign 3: finished, one sent (counts for today only).
+        const base = { type: "issue", template_id: 1n, subject_override: null, payload: {}, sent_count: 0, failed_count: 0, created_at: NOW }
+        db.campaigns.push({ ...base, id: 2n, status: "sending" }, { ...base, id: 3n, status: "sent" })
+        const d = (id: number, campaign: bigint, status: string, sent_at: Date | null = null): Row =>
+            ({ id: BigInt(id), campaign_id: campaign, subscriber_id: 100n, status, attempts: 0, last_error: null, sent_at, updated_at: NOW })
+        db.deliveries.push(d(2000, 2n, "queued"), d(2001, 2n, "queued"), d(3000, 3n, "sent", hoursAgo(3)), d(3001, 3n, "sent", hoursAgo(30)))
+
+        const q = await queueSummary({ perRun: 10, perHour: 100, perDay: 1000 }, NOW)
+        expect(q.today).toMatchObject({ sent: 2, limit: 1000 })
+        expect(q.campaigns.map((c) => c.id)).toEqual([2n, 1n])
+        expect(q.campaigns.map((c) => c.status)).toEqual(["sending", "paused"])
+        expect(q.totals).toMatchObject({ pending: 6, sent: 1, failed: 0, retrying: 0, retryable: 0 })
     })
 })

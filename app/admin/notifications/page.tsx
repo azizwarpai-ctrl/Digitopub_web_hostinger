@@ -15,9 +15,10 @@ import {
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { PageHeader } from "@/components/ui/page-header"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useNotificationOverview } from "@/src/features/notifications/api/use-campaigns"
+import { formatRelative, useNotificationOverview } from "@/src/features/notifications/api/use-campaigns"
 import {
   CampaignStatusBadge,
   campaignTypeLabel,
@@ -113,6 +114,74 @@ export default function NotificationsPage() {
           loading={isLoading}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sending queue</CardTitle>
+          <CardDescription>Messages waiting to go out, within the daily sending limit.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : !data?.queue ? (
+            <p className="text-sm text-muted-foreground">Queue information is not available.</p>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Progress
+                  value={
+                    data.queue.today.limit > 0
+                      ? Math.min(100, Math.round((data.queue.today.sent / data.queue.today.limit) * 100))
+                      : 0
+                  }
+                  aria-label="Daily sending limit used"
+                />
+                <p className="text-sm text-muted-foreground">
+                  {data.queue.today.sent.toLocaleString()} of {data.queue.today.limit.toLocaleString()} daily messages
+                  sent in the last 24 h
+                </p>
+              </div>
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {[
+                  ["Pending", data.queue.totals.pending],
+                  ["Retrying", data.queue.totals.retrying],
+                  ["Sent", data.queue.totals.sent],
+                  ["Failed", data.queue.totals.failed],
+                ].map(([label, value]) => (
+                  <div key={label as string}>
+                    <dt className="text-sm text-muted-foreground">{label}</dt>
+                    <dd className="text-xl font-semibold tabular-nums">{(value as number).toLocaleString()}</dd>
+                  </div>
+                ))}
+              </dl>
+              {data.queue.campaigns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No messages waiting to be sent.</p>
+              ) : (
+                <ul className="divide-y">
+                  {data.queue.campaigns.map((c) => (
+                    <li key={c.id}>
+                      <Link
+                        href={`/admin/notifications/campaigns/${c.id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md py-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{c.subject || campaignTypeLabel(c.type)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {c.pending.toLocaleString()} pending &middot; {c.sent.toLocaleString()} sent &middot;{" "}
+                            {c.failed.toLocaleString()} failed
+                            {c.finishes_at ? ` \u00b7 finishes ${formatRelative(c.finishes_at)}` : ""}
+                          </p>
+                        </div>
+                        <CampaignStatusBadge status={c.status} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
