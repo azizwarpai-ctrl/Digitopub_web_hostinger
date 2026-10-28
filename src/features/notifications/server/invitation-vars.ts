@@ -12,7 +12,8 @@ export interface InvitationJournal {
     invitation_scope: string | null
 }
 
-const TITLE_PREFIX = /^\s*(?:(?:dr|prof|professor|doctor)\b\.?\s*)+/i
+// A title only when followed by a dot, space or the end (\b is ASCII-only: "Drمحمد" is a name).
+const TITLE_PREFIX = /^\s*(?:(?:dr|prof|professor|doctor)(?=[.\s]|$)\.?\s*)+/i
 
 /** "Dr. <name>" with any existing Dr/Prof prefix removed, or "Colleague" without a name. */
 export function salutationName(name: string | null | undefined): string {

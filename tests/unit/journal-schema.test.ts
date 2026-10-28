@@ -131,6 +131,12 @@ describe('Journal Schemas', () => {
             }
         })
 
+        // #231: the invitation text is set on the edit page only.
+        it('should strip invitation_scope on create', () => {
+            const result = journalCreateSchema.parse({ ...validJournal, invitation_scope: 'x' })
+            expect(result).not.toHaveProperty('invitation_scope')
+        })
+
         it('should allow null optional fields', () => {
             const result = journalCreateSchema.safeParse({
                 ...validJournal,

@@ -149,6 +149,25 @@ describe('API Integration Tests', () => {
                 expect(body.data.id).toBe('1')
             })
 
+            // #231: the invitation text is admin-only; the unselected record must not leak it.
+            it('does not expose invitation_scope publicly', async () => {
+                const mockJournal = {
+                    id: BigInt(1), title: 'Test', field: 'CS', status: 'active',
+                    created_at: new Date(), updated_at: new Date(), created_by: BigInt(1),
+                    invitation_scope: 'an international journal dedicated to testing',
+                }
+                vi.mocked(prisma.journal.findFirst).mockResolvedValue(null)
+                vi.mocked(prisma.journal.findUnique)
+                    .mockResolvedValueOnce(null)
+                    .mockResolvedValueOnce(mockJournal as any)
+
+                const res = await app.request('/api/journals/1')
+                expect(res.status).toBe(200)
+                const body = await res.json()
+                expect(body.data.title).toBe('Test')
+                expect(body.data).not.toHaveProperty('invitation_scope')
+            })
+
             it('should accept slug-based identifiers (any string)', async () => {
                 // Slug-based routing: the API now accepts any string (ojs_path, ojs_id, or numeric id)
                 vi.mocked(prisma.journal.findFirst).mockResolvedValue(null)

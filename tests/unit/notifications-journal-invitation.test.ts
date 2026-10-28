@@ -27,6 +27,7 @@ describe("salutationName (#231)", () => {
         for (const v of ["", null, "  "]) expect(salutationName(v)).toBe("Colleague")
     })
     it("does not strip names that merely start with Dr", () => expect(salutationName("Drew Smith")).toBe("Dr. Drew Smith"))
+    it("keeps a non-Latin name glued to Dr", () => expect(salutationName("Drمحمد")).toBe("Dr. Drمحمد"))
 })
 
 describe("longDate", () => {
