@@ -6,6 +6,7 @@ import { useParams } from "next/navigation"
 import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock, Link2Off, RefreshCw, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -14,6 +15,7 @@ import {
   useGetSpecializations,
   useRetrySpecializationSync,
   useSetJournalSpecialization,
+  useUpdateInvitationScope,
 } from "@/src/features/journals/api/use-specializations"
 import type { SpecializationSyncStatus } from "@/src/features/journals/schemas/specialization-schema"
 
@@ -110,6 +112,12 @@ export default function EditJournalPage() {
   const currentIsActive = activeNames.includes(current)
   const changed = selected !== null && selected !== current
   const sync = journal?.sync
+
+  const saveScope = useUpdateInvitationScope()
+  const [scopeDraft, setScopeDraft] = useState<string | null>(null)
+  const scopeValue = scopeDraft ?? journal?.invitation_scope ?? ""
+  const scopeChanged = scopeDraft !== null && scopeDraft.trim() !== (journal?.invitation_scope ?? "")
+  const shortName = journal?.ojs_path?.toUpperCase() ?? ""
 
   const handleSave = () => {
     if (!journal || !changed || !selected) return
@@ -214,6 +222,42 @@ export default function EditJournalPage() {
                 />
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {journal && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Alert invitation</CardTitle>
+            <CardDescription>
+              Describes the journal in the invitation email sent to imported contacts. It continues the sentence
+              &quot;We are pleased to invite you to stay connected with the {journal.title}
+              {shortName ? ` (${shortName})` : ""},&nbsp;…&quot;. Leave it empty to end the sentence after the journal name.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invitation-scope">Journal description for invitations</Label>
+              <Textarea
+                id="invitation-scope"
+                rows={3}
+                maxLength={500}
+                value={scopeValue}
+                onChange={(e) => setScopeDraft(e.target.value)}
+                placeholder="an international, peer-reviewed, open-access journal dedicated to advancing research and clinical practice in …"
+              />
+              <p className="text-sm text-muted-foreground">{scopeValue.length}/500 characters. Start in lower case, without a final full stop.</p>
+            </div>
+            <Button
+              type="button"
+              onClick={() =>
+                saveScope.mutate({ journalId: journal.journal_id, scope: scopeValue }, { onSuccess: () => setScopeDraft(null) })
+              }
+              disabled={!scopeChanged || saveScope.isPending}
+            >
+              {saveScope.isPending ? "Saving…" : "Save invitation text"}
+            </Button>
           </CardContent>
         </Card>
       )}

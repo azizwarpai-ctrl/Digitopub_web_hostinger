@@ -171,7 +171,7 @@ export async function getJournalSpecialization(journalId: bigint) {
   // has ojs_id 4), so it can return a different journal than the one clicked.
   const journal = await prisma.journal.findUnique({
     where: { id: journalId },
-    select: { id: true, title: true, field: true, ojs_id: true, ojs_path: true },
+    select: { id: true, title: true, field: true, ojs_id: true, ojs_path: true, invitation_scope: true },
   })
   if (!journal) throw new SpecializationError("Journal not found", 404)
   return {
@@ -180,6 +180,7 @@ export async function getJournalSpecialization(journalId: bigint) {
     field: journal.field,
     ojs_id: journal.ojs_id,
     ojs_path: journal.ojs_path,
+    invitation_scope: journal.invitation_scope,
     sync: await getJournalSyncStatus(journal.id, journal.ojs_id),
   }
 }

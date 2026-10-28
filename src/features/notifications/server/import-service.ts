@@ -305,7 +305,11 @@ export async function confirmImport(importId: bigint, opts: { journalId?: bigint
             }
         }
 
-        const templateId = await ensureNotificationTemplate(prisma, NOTIFICATION_TEMPLATE_KEYS.importInvitation)
+        // A list assigned to a journal is invited in that journal's name (#231).
+        const templateId = await ensureNotificationTemplate(
+            prisma,
+            journalId ? NOTIFICATION_TEMPLATE_KEYS.journalInvitation : NOTIFICATION_TEMPLATE_KEYS.importInvitation,
+        )
         const campaign = await prisma.notificationCampaign.create({
             data: {
                 type: "invitation",

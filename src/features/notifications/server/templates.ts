@@ -13,6 +13,7 @@ import { TEMPLATE_SET, buildTemplateSet, type TemplateDefinition } from "./templ
 
 export const NOTIFICATION_TEMPLATE_KEYS = {
     importInvitation: "notify_import_invitation",
+    journalInvitation: "notify_journal_invitation",
     subscriptionConfirm: "notify_subscription_confirm",
     welcome: "notify_welcome",
     preferencesUpdated: "notify_preferences_updated",

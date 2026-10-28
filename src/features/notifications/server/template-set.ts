@@ -117,7 +117,7 @@ function styleKit(s: EmailStyle) {
     return { C, SANS, button, h1, p, small, layout, mastLink, SITE_MAST: mastLink("site_url", "{{site_name}}") }
 }
 
-/** The seven notification templates drawn in `style`. Wording and variables are the same in every style. */
+/** The nine notification templates drawn in `style`. Wording and variables are the same in every style. */
 export function buildTemplateSet(style: EmailStyle): Record<string, TemplateDefinition> {
     const { C, SANS, button, h1, p, small, layout, mastLink, SITE_MAST } = styleKit(style)
     return {
@@ -189,6 +189,49 @@ Yes, keep me informed: {{confirm_url}}
 If you take no action, you will not receive further emails. This invitation expires on {{expires_on}}.
 
 ${textFooter("You are receiving this single invitation because {{inviter_org}} added your address to its list of researchers in {{primary_discipline}}.")}`,
+    },
+
+    notify_journal_invitation: {
+        subject: "Stay connected with {{journal_title}} ({{journal_short}})",
+        description: "Double opt-in invitation, in a journal's name, for a contact list assigned to that journal (#231). No alerts are sent unless the recipient confirms.",
+        variables: [...COMMON_VARIABLES, "confirm_url", "expires_on", "salutation", "journal_title", "journal_short", "journal_scope_sentence", "journal_url"],
+        html_content: layout({
+            masthead: mastLink("journal_url", "{{journal_title}}"),
+            reason: "You are receiving this one-time invitation because your address was included in a list of researchers whose work relates to the {{journal_title}}.",
+            body: [
+                p("Dear {{salutation}},"),
+                p("We are pleased to invite you to stay connected with the <strong>{{journal_title}} ({{journal_short}})</strong>{{journal_scope_sentence}}."),
+                p("With your permission, we would be delighted to send you occasional email alerts whenever new articles or journal issues are published, helping you stay informed about the latest research, clinical innovations, and developments in our specialty."),
+                p("We also warmly encourage you to consider {{journal_short}} for publishing your future research, including original studies, clinical reports, reviews, and innovative techniques."),
+                button("Explore the journal &amp; submit your research", "journal_url"),
+                `<h2 class="ink" style="margin:32px 0 8px;font-family:${style.fonts.heading};font-size:19px;line-height:1.3;font-weight:${style.headingWeight};color:${C.ink}">Stay Connected with {{journal_short}}</h2>`,
+                p("To receive complimentary publication alerts, simply confirm your interest below:"),
+                button("Yes, keep me informed", "confirm_url"),
+                small("Subscription is entirely optional. You may update your preferences or unsubscribe at any time. If you take no action, you will not receive further publication alerts. This invitation expires on {{expires_on}}."),
+                `<p class="ink" style="margin:24px 0 0;font-family:${SANS};font-size:16px;line-height:1.6;color:${C.ink}">We look forward to sharing new scientific developments and welcoming your future contributions to the journal.</p>`,
+            ].join("\n"),
+        }),
+        text_content: `Dear {{salutation}},
+
+We are pleased to invite you to stay connected with the {{journal_title}} ({{journal_short}}){{journal_scope_sentence}}.
+
+With your permission, we would be delighted to send you occasional email alerts whenever new articles or journal issues are published, helping you stay informed about the latest research, clinical innovations, and developments in our specialty.
+
+We also warmly encourage you to consider {{journal_short}} for publishing your future research, including original studies, clinical reports, reviews, and innovative techniques.
+
+Explore the journal and submit your research: {{journal_url}}
+
+STAY CONNECTED WITH {{journal_short}}
+To receive complimentary publication alerts, simply confirm your interest below:
+
+Yes, keep me informed: {{confirm_url}}
+
+Subscription is entirely optional. You may update your preferences or unsubscribe at any time. If you take no action, you will not receive further publication alerts.
+This invitation expires on {{expires_on}}.
+
+We look forward to sharing new scientific developments and welcoming your future contributions to the journal.
+
+${textFooter("You are receiving this one-time invitation because your address was included in a list of researchers whose work relates to the {{journal_title}}.")}`,
     },
 
     notify_welcome: {

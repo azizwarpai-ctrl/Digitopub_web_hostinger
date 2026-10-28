@@ -15,6 +15,8 @@ const journalBaseSchema = z.object({
   cover_image_url: z.url().optional().nullable(),
   website_url: z.url().optional().nullable(),
   status: z.enum(["active", "inactive", "suspended"]),
+  // #231: scope sentence for the journal's alert invitation; blank clears it.
+  invitation_scope: z.string().trim().max(500).transform((v) => v || null).optional().nullable(),
 })
 
 export const journalCreateSchema = journalBaseSchema.extend({

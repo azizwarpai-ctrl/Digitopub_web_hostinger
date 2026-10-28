@@ -62,6 +62,8 @@ model Journal {
   aims_and_scope     String?            @db.Text
   author_guidelines  String?            @db.Text
   last_synced_at     DateTime?
+  /// #231: one-sentence description used in this journal's alert invitation ("an international, peer-reviewed … journal dedicated to …"). digitopub-owned; the OJS sync never writes it.
+  invitation_scope   String?            @db.VarChar(500)
   creator            AdminUser?         @relation("CreatedBy", fields: [created_by], references: [id])
   published_articles PublishedArticle[]
   submissions        Submission[]

@@ -19,7 +19,7 @@ describe("email template raw-variable guard (#202)", () => {
 
 describe("shipped notification templates", () => {
     const names = [
-        "notify_import_invitation", "notify_subscription_confirm", "notify_welcome", "notify_preferences_updated",
+        "notify_import_invitation", "notify_journal_invitation", "notify_subscription_confirm", "notify_welcome", "notify_preferences_updated",
         "notify_new_issue", "notify_weekly_digest", "notify_daily_digest",
     ]
 

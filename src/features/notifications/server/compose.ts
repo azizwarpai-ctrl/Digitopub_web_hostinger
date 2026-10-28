@@ -19,7 +19,8 @@ import { getSettings } from "./admin-config-service"
 import { getEmailStyle, type EmailStyle } from "./email-styles"
 import { RAW_BLOCK_VARIABLES, buildArticles, buildEditorNote, buildMessage, buildToc } from "./render-blocks"
 import { resolveRecipients, type AudienceSubscriber, type RuleLike } from "./resolve-recipients"
-import { campaignJournalTitle, senderNameFor } from "./sender-name"
+import { campaignJournal, senderNameFor } from "./sender-name"
+import { journalInvitationVars, longDate, salutationName, type InvitationJournal } from "./invitation-vars"
 
 export interface ComposeContext {
     campaign: NotificationCampaign
@@ -36,6 +37,8 @@ export interface ComposeContext {
     senderName: string | null
     /** Title of the campaign's journal (payload.journal_id), e.g. a journal-assigned list. */
     journalTitle: string | null
+    /** That journal, for the journal invitation's variables (#231); absent or null without one. */
+    journal?: InvitationJournal | null
 }
 
 export interface ComposeSubscriber extends AudienceSubscriber {
@@ -55,11 +58,13 @@ export async function loadComposeContext(campaign: NotificationCampaign, rules: 
         prisma.discipline.findMany({ select: { id: true, name: true } }),
         getSettings(),
     ])
-    const journalTitle = await campaignJournalTitle(campaign)
+    const journal = await campaignJournal(campaign)
+    const journalTitle = journal?.title ?? null
     return {
         campaign,
         template,
         journalTitle,
+        journal,
         senderName: await senderNameFor(campaign, events, journalTitle),
         events: new Map(events.map((e) => [e.id.toString(), e])),
         rules,
@@ -187,10 +192,13 @@ async function variablesFor(ctx: ComposeContext, s: ComposeSubscriber): Promise<
             return {
                 ...vars,
                 confirm_url: `${getAppBaseUrl()}/notifications/confirm?token=${encodeURIComponent(token)}`,
-                expires_on: isoDate(expires),
+                expires_on: longDate(expires),
                 inviter_org: SITE_NAME,
                 primary_discipline: ctx.journalTitle ?? first ?? "your field",
                 preheader: "Confirm to receive publication alerts. Nothing further is sent unless you do.",
+                // Journal invitation (#231). Without a journal (deleted since) it reads in the site's name.
+                salutation: salutationName(s.name),
+                ...journalInvitationVars(ctx.journal ?? { title: SITE_NAME, ojs_path: null, invitation_scope: null }),
             }
         }
         case "custom": {
