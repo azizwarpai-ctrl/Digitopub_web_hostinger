@@ -21,6 +21,7 @@ import { articleAudioRouter } from "@/src/features/article-audio/server"
 import { notificationsRouter } from "@/src/features/notifications/server"
 import { notificationsPublicRouter } from "@/src/server/routes/notifications-public"
 import { notificationsCronRouter } from "@/src/features/notifications/server/cron-route"
+import { opsRouter } from "@/src/server/routes/ops"
 
 const apiApp = new Hono()
     .route("/journals", journalRouter)
@@ -50,6 +51,8 @@ const apiApp = new Hono()
     .route("/notifications", notificationsPublicRouter)
     .route("/notifications/cron", notificationsCronRouter)
     .route("/notifications", notificationsRouter)
+    // CRON_SECRET-protected diagnostics (#194).
+    .route("/ops", opsRouter)
 
 
 const app = new Hono().basePath("/api")
