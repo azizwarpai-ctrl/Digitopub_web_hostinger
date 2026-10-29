@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import { clientIpFromHeaders } from "@/src/lib/ip-hash"
 import { zValidator } from "@hono/zod-validator"
 import { registerSchema } from "../../auth/schemas/auth-schema"
 import { provisionOjsUser } from "./ojs-user-service"
@@ -28,10 +29,8 @@ const app = new Hono()
 // Provision a new user into OJS, then hand them the journal's login page.
 app.post("/register", zValidator("json", registerSchema), async (c) => {
   try {
-    // Rate limiting — extract real IP from proxy headers or fall back to socket
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
-      || c.req.header("x-real-ip")
-      || "unknown"
+    // Rate limiting keyed on the proxy-verified client IP (#194).
+    const ip = clientIpFromHeaders(c.req.raw.headers)
 
     const rateCheck = process.env.NODE_ENV === "test" && process.env.TEST_DISABLE_RATE_LIMIT === "true"
       ? { allowed: true, retryAfter: 0, remaining: Infinity, resetAt: 0 }
