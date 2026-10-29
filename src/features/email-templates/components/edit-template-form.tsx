@@ -21,6 +21,7 @@ import { Form } from "@/components/ui/form"
 import { toast } from "sonner"
 import type { EmailTemplate, EmailTemplatePreviewResult } from "@/src/features/email-templates/types/email-template-type"
 import { extractAllVariables } from "@/src/lib/email/renderer"
+import { buildPlaceholderPreview } from "@/src/features/email-templates/utils/placeholder-preview"
 import { emailTemplateUpdateSchema, type EmailTemplateUpdate } from "@/src/features/email-templates/schemas/email-template-schema"
 
 interface Props {
@@ -107,15 +108,9 @@ export function EditTemplateForm({ template }: Props) {
   }
 
   const handlePreview = () => {
-    let previewContent = currentHtmlContent || ""
-    let previewSub = currentSubject || ""
-    allVariables.forEach((v) => {
-      const sampleValue = `<strong style="color:#3b82f6">[${v}]</strong>`
-      previewContent = previewContent.replace(new RegExp(`\\{\\{${v}\\}\\}`, "g"), sampleValue)
-      previewSub = previewSub.replace(new RegExp(`\\{\\{${v}\\}\\}`, "g"), `[${v}]`)
-    })
-    setPreviewHtml(previewContent)
-    setPreviewSubject(previewSub)
+    const preview = buildPlaceholderPreview(currentHtmlContent, currentSubject, allVariables)
+    setPreviewHtml(preview.html)
+    setPreviewSubject(preview.subject)
   }
 
   const paletteVariables = useMemo(() => {
