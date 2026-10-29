@@ -11,6 +11,7 @@ import { TemplateActionsCard } from "@/src/features/email-templates/components/t
 import { useCreateEmailTemplate } from "@/src/features/email-templates/api/use-create-email-template"
 import { Form } from "@/components/ui/form"
 import { extractAllVariables } from "@/src/lib/email/renderer"
+import { buildPlaceholderPreview } from "@/src/features/email-templates/utils/placeholder-preview"
 import { useNewTemplateStore } from "@/src/features/email-templates/stores/new-template-store"
 import { emailTemplateCreateSchema, type EmailTemplateCreate } from "@/src/features/email-templates/schemas/email-template-schema"
 
@@ -72,15 +73,9 @@ export function NewTemplateForm() {
   }
 
   const handlePreview = () => {
-    let previewContent = currentHtmlContent || ""
-    let previewSub = currentSubject || ""
-    allVariables.forEach((v) => {
-      const sampleValue = `<strong style="color:#3b82f6">[${v}]</strong>`
-      previewContent = previewContent.replace(new RegExp(`\\{\\{${v}\\}\\}`, "g"), sampleValue)
-      previewSub = previewSub.replace(new RegExp(`\\{\\{${v}\\}\\}`, "g"), `[${v}]`)
-    })
-    setPreviewHtml(previewContent)
-    setPreviewSubject(previewSub)
+    const preview = buildPlaceholderPreview(currentHtmlContent, currentSubject, allVariables)
+    setPreviewHtml(preview.html)
+    setPreviewSubject(preview.subject)
   }
 
   return (
