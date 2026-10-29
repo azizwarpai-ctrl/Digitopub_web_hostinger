@@ -64,5 +64,7 @@ export function clientIpFromHeaders(headers: Headers): string {
     .map((s) => s.trim())
     .filter(Boolean)
   if (chain.length >= hops) return chain[chain.length - hops]
-  return headers.get("x-real-ip")?.trim() || chain[0] || "0.0.0.0"
+  // A chain shorter than the trusted hops was not built by the proxy: fail
+  // closed rather than fall back to a client-chosen entry.
+  return headers.get("x-real-ip")?.trim() || "0.0.0.0"
 }

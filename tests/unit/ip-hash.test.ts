@@ -81,7 +81,8 @@ describe("ip-hash", () => {
         it("falls back to x-real-ip when the chain is shorter than the trusted hops", () => {
             process.env.TRUSTED_PROXY_HOPS = "3"
             expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "1.1.1.1", "x-real-ip": "198.51.100.7" }))).toBe("198.51.100.7")
-            expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }))).toBe("1.1.1.1")
+            // Never a client-chosen entry: fail closed (review of #251).
+            expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }))).toBe("0.0.0.0")
         })
         it("treats a missing or invalid TRUSTED_PROXY_HOPS as 1", () => {
             for (const v of [undefined, "0", "-2", "abc", "1.5"]) {
