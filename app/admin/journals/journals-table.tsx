@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
-import { BookOpen, Eye, Pencil, Plus } from "lucide-react"
+import { AlertTriangle, BookOpen, Eye, Pencil, Plus } from "lucide-react"
 import { OjsImage } from "@/src/features/ojs/components/ojs-image"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { DataTable, sortableHeader } from "@/components/data-table/data-table"
 import type { CsvColumn } from "@/components/data-table/csv-export"
 import { cn, formatDate, statusBadgeClass } from "@/src/lib/utils"
 import { useGetSpecializationSyncStatus } from "@/src/features/journals/api/use-specializations"
+import { unsyncedCount } from "@/src/features/journals/utils/sync-summary"
 
 export interface JournalRow {
   id: string
@@ -146,8 +147,28 @@ const csvColumns: CsvColumn<JournalRow>[] = [
   { header: "Created", accessor: (row) => formatDate(row.createdAt) },
 ]
 
+/** Points to "Push all to OJS" while any journal's specialization has not reached OJS (#252). */
+function SyncNotice() {
+  const { data } = useGetSpecializationSyncStatus()
+  const count = unsyncedCount(data)
+  if (count === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm" role="status">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+      <span>
+        {count} {count === 1 ? "journal is" : "journals are"} not synced to OJS.
+      </span>
+      <Link href="/admin/journals/specializations" className="font-medium underline underline-offset-2">
+        Open specializations to push them
+      </Link>
+    </div>
+  )
+}
+
 export function JournalsTable({ rows }: { rows: JournalRow[] }) {
   return (
+    <div className="space-y-4">
+    <SyncNotice />
     <DataTable
       columns={columns}
       data={rows}
@@ -170,5 +191,6 @@ export function JournalsTable({ rows }: { rows: JournalRow[] }) {
         </div>
       }
     />
+    </div>
   )
 }

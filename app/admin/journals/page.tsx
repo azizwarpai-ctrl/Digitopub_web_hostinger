@@ -3,7 +3,7 @@ import { getSession } from "@/src/lib/db/auth"
 import { prisma } from "@/src/lib/db/config"
 import { normalizeOjsAssetUrl } from "@/src/features/ojs/utils/ojs-config"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { JournalsTable, type JournalRow } from "./journals-table"
 import { PageHeader } from "@/components/ui/page-header"
@@ -54,12 +54,20 @@ export default async function JournalsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Journal Management" subtitle="Manage all scientific journals in the system">
+        <div className="flex flex-wrap items-center gap-2">
+        <Button asChild variant="outline">
+          <Link href="/admin/journals/specializations">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Specializations &amp; OJS sync
+          </Link>
+        </Button>
         <Button asChild>
           <Link href="/admin/journals/new">
             <Plus className="mr-2 h-4 w-4" />
             Add New Journal
           </Link>
         </Button>
+        </div>
       </PageHeader>
 
       {error && (
