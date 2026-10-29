@@ -32,6 +32,7 @@ All environment variables required by the DigitoPub platform.
 | `NODE_ENV` | Node environment (`development` / `production`) | `development` | Multiple |
 | `NEXT_PUBLIC_APP_URL` | Public-facing application URL | `http://localhost:3000` | `src/lib/rpc.ts` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | — | `src/server/app.ts` |
+| `TRUSTED_PROXY_HOPS` | Proxies in front of the app that append to `X-Forwarded-For`. The client IP for rate limits is the entry this many places from the right (#194). Production (Hostinger proxy + CDN) needs `1`; check with `GET /api/ops/client-ip` (CRON_SECRET) before changing it | `1` | `src/lib/ip-hash.ts` (`clientIpFromHeaders`) |
 | `NOTIFY_TOKEN_SECRET` | HMAC secret for publication-alert confirm, manage and unsubscribe links. **Required in production**; rotating it invalidates every link already emailed | dev default with warning | `src/lib/env.ts` (`getNotifyEnv`), `src/lib/notification-token.ts` |
 
 ---

@@ -39,17 +39,30 @@ export function hashUa(ua: string, day: string = dayKey()): string {
   return hashWithDailySalt(ua, day)
 }
 
-/** Extract the client IP from common Next.js / Hono request shapes. */
+/** Proxies in front of the app that append to X-Forwarded-For (`TRUSTED_PROXY_HOPS`, default 1). */
+function trustedProxyHops(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS
+  const n = raw && /^\d+$/.test(raw) ? Number(raw) : 1
+  return n >= 1 ? n : 1
+}
+
+/**
+ * The client IP for rate limits and hashing (#194).
+ *
+ * X-Forwarded-For is client-controlled on the left: anyone can send a fresh
+ * value with every request. The trusted proxy appends the real client on the
+ * right, so the address `TRUSTED_PROXY_HOPS` entries from the right is the
+ * one to use. Verified in production (Hostinger proxy + CDN): the right-most
+ * entry and X-Real-IP, which the proxy overwrites, both hold the real client.
+ * Headers the proxy does not set (cf-connecting-ip, x-client-ip) are never
+ * trusted, since a client could forge them.
+ */
 export function clientIpFromHeaders(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for")
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim()
-    if (first) return first
-  }
-  return (
-    headers.get("x-real-ip") ||
-    headers.get("cf-connecting-ip") ||
-    headers.get("x-client-ip") ||
-    "0.0.0.0"
-  )
+  const hops = trustedProxyHops()
+  const chain = (headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (chain.length >= hops) return chain[chain.length - hops]
+  return headers.get("x-real-ip")?.trim() || chain[0] || "0.0.0.0"
 }

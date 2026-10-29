@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { clientIpFromHeaders } from "@/src/lib/ip-hash"
 
 import { getOjsHostnames } from "@/src/features/ojs/utils/ojs-config"
 import { OJS_FETCH_HEADERS } from "@/src/features/ojs/utils/ojs-hosts"
@@ -103,8 +104,8 @@ async function fetchWithAllowlistedRedirects(initialUrl: string): Promise<Respon
 }
 
 export async function GET(request: NextRequest) {
-  const clientIp =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown"
+  // Proxy-verified client IP (#194), not the spoofable first X-Forwarded-For entry.
+  const clientIp = clientIpFromHeaders(request.headers)
 
   if (!checkRateLimit(clientIp)) {
     console.warn("[image-proxy] rate limit exceeded", { ip: clientIp, active: activeRequests })
