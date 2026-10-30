@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("server-only", () => ({}))
 
 const prismaMock: any = {
-    articleCitationCount: { findMany: vi.fn(), upsert: vi.fn() },
+    articleCitationCount: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn() },
 }
 vi.mock("@/src/lib/db/config", () => ({ get prisma() { return prismaMock } }))
 vi.mock("@/src/features/ojs/server/ojs-client", () => ({ ojsQuery: vi.fn(async () => { throw new Error("OJS must not be called") }) }))
@@ -87,17 +87,17 @@ describe("fetchCrossrefCount / fetchOpenAlexCount", () => {
 
 describe("lookupCitationCount", () => {
     it("takes the max (openalex higher)", async () => {
-        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(5), openalex: oa(15) }))).toEqual({ count: 15, source: "openalex" })
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(5), openalex: oa(15) }))).toEqual({ count: 15, source: "openalex", partial: false })
     })
     it("tie -> crossref", async () => {
-        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(4), openalex: oa(4) }))).toEqual({ count: 4, source: "crossref" })
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(4), openalex: oa(4) }))).toEqual({ count: 4, source: "crossref", partial: false })
     })
     it("crossref higher -> crossref", async () => {
-        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(9), openalex: oa(2) }))).toEqual({ count: 9, source: "crossref" })
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(9), openalex: oa(2) }))).toEqual({ count: 9, source: "crossref", partial: false })
     })
     it("one source failing or 404 -> the other", async () => {
-        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: () => json({}, 503), openalex: oa(3) }))).toEqual({ count: 3, source: "openalex" })
-        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(2), openalex: () => json({}, 404) }))).toEqual({ count: 2, source: "crossref" })
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: () => json({}, 503), openalex: oa(3) }))).toEqual({ count: 3, source: "openalex", partial: true })
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(2), openalex: () => json({}, 404) }))).toEqual({ count: 2, source: "crossref", partial: false })
     })
     it("both fail -> throws with both reasons", async () => {
         const f = fakeFetch({ crossref: () => json({}, 503), openalex: () => json({}, 404) })
@@ -166,6 +166,36 @@ describe("refreshCitationCounts", () => {
         })
         const stats = await refreshCitationCounts({ deadline: far(), dois: ["10.26629/a", "10.26629/bad", "10.26629/c"], fetchImpl: f as any })
         expect(stats).toEqual({ total: 3, checked: 3, updated: 2, failed: 1, remaining: 0 })
+    })
+})
+
+// Review of #254: a partial lookup (one source errored) must never lower a stored count.
+describe("refreshCitationCounts: partial lookups", () => {
+    it("keeps the higher stored count when one source errors and the other reports less", async () => {
+        prismaMock.articleCitationCount.findMany.mockResolvedValue([{ doi: "10.26629/a", checked_at: new Date(0), count: 5 }])
+        prismaMock.articleCitationCount.update.mockResolvedValue({})
+        const f = fakeFetch({ crossref: () => json({}, 503), openalex: oa(0) })
+        const stats = await refreshCitationCounts({ deadline: Date.now() + 60_000, dois: ["10.26629/a"], fetchImpl: f })
+        expect(prismaMock.articleCitationCount.upsert).not.toHaveBeenCalled()
+        const arg = prismaMock.articleCitationCount.update.mock.calls[0][0]
+        expect(arg.where).toEqual({ doi: "10.26629/a" })
+        expect(arg.data).not.toHaveProperty("count")
+        expect(arg.data).not.toHaveProperty("fetched_at")
+        expect(stats).toMatchObject({ checked: 1, updated: 0, failed: 0 })
+    })
+    it("still writes a partial result that is higher than the stored count", async () => {
+        prismaMock.articleCitationCount.findMany.mockResolvedValue([{ doi: "10.26629/a", checked_at: new Date(0), count: 2 }])
+        prismaMock.articleCitationCount.upsert.mockResolvedValue({})
+        const f = fakeFetch({ crossref: () => json({}, 503), openalex: oa(7) })
+        await refreshCitationCounts({ deadline: Date.now() + 60_000, dois: ["10.26629/a"], fetchImpl: f })
+        expect(prismaMock.articleCitationCount.upsert.mock.calls[0][0].update).toMatchObject({ count: 7, source: "openalex" })
+    })
+    it("keeps going when recording a failure itself fails", async () => {
+        prismaMock.articleCitationCount.findMany.mockResolvedValue([])
+        prismaMock.articleCitationCount.upsert.mockRejectedValue(new Error("db down"))
+        const f = fakeFetch({ crossref: () => json({}, 503), openalex: () => json({}, 503) })
+        const stats = await refreshCitationCounts({ deadline: Date.now() + 60_000, dois: ["10.26629/a", "10.26629/b"], fetchImpl: f })
+        expect(stats).toMatchObject({ checked: 2, failed: 2 })
     })
 })
 

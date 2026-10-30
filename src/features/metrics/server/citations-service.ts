@@ -78,7 +78,7 @@ export async function fetchOpenAlexCount(doi: string, fetchImpl: FetchLike = fet
 export async function lookupCitationCount(
   doi: string,
   fetchImpl: FetchLike = fetch,
-): Promise<{ count: number; source: CitationSource }> {
+): Promise<{ count: number; source: CitationSource; partial: boolean }> {
   const [crossref, openalex] = await Promise.allSettled([
     fetchCrossrefCount(doi, fetchImpl),
     fetchOpenAlexCount(doi, fetchImpl),
@@ -89,8 +89,10 @@ export async function lookupCitationCount(
     const reasons = [crossref, openalex].map((r) => (r.status === "rejected" ? String(r.reason?.message ?? r.reason) : "not found"))
     throw new Error(`crossref: ${reasons[0]}; openalex: ${reasons[1]}`)
   }
-  if (o !== null && (c === null || o > c)) return { count: o, source: "openalex" }
-  return { count: c as number, source: "crossref" }
+  // Partial: a source errored (not merely "not found"), so the count may be low.
+  const partial = crossref.status === "rejected" || openalex.status === "rejected"
+  if (o !== null && (c === null || o > c)) return { count: o, source: "openalex", partial }
+  return { count: c as number, source: "crossref", partial }
 }
 
 /** Published DigitoPub DOIs from OJS (read-only). */
@@ -121,9 +123,10 @@ export async function refreshCitationCounts(opts: {
   const dois = opts.dois ?? (await listPublishedDois())
   const existing = await prisma.articleCitationCount.findMany({
     where: { doi: { in: dois } },
-    select: { doi: true, checked_at: true },
+    select: { doi: true, checked_at: true, count: true },
   })
   const lastChecked = new Map(existing.map((r) => [r.doi, r.checked_at.getTime()]))
+  const lastCount = new Map(existing.map((r) => [r.doi, r.count]))
   const queue = [...dois].sort((a, b) => (lastChecked.get(a) ?? 0) - (lastChecked.get(b) ?? 0))
 
   const stats: RefreshStats = { total: dois.length, checked: 0, updated: 0, failed: 0, remaining: 0 }
@@ -133,7 +136,14 @@ export async function refreshCitationCounts(opts: {
       const doi = queue[next++]
       const now = new Date()
       try {
-        const { count, source } = await lookupCitationCount(doi, opts.fetchImpl)
+        const { count, source, partial } = await lookupCitationCount(doi, opts.fetchImpl)
+        // One source errored and the other reports fewer: keep the stored count.
+        const stored = lastCount.get(doi)
+        if (partial && stored !== undefined && count < stored) {
+          await prisma.articleCitationCount.update({ where: { doi }, data: { checked_at: now, error: "partial lookup; kept higher stored count" } })
+          stats.checked++
+          continue
+        }
         await prisma.articleCitationCount.upsert({
           where: { doi },
           create: { doi, count, source, fetched_at: now, checked_at: now },
@@ -142,11 +152,12 @@ export async function refreshCitationCounts(opts: {
         stats.updated++
       } catch (e) {
         const error = (e instanceof Error ? e.message : String(e)).slice(0, 255)
+        // Bookkeeping only; a DB error here must not stop the other workers.
         await prisma.articleCitationCount.upsert({
           where: { doi },
           create: { doi, count: 0, source: "crossref", checked_at: now, error },
           update: { checked_at: now, error },
-        })
+        }).catch(() => undefined)
         stats.failed++
       }
       stats.checked++

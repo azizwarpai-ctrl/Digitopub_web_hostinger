@@ -20,8 +20,10 @@ const SOURCE_LABEL = { crossref: "Crossref", openalex: "OpenAlex" } as const
 export function CitationBadge({ doi, size = "sm", className }: CitationBadgeProps) {
   const gradientId = useId()
   const normalized = normalizeCitationDoi(doi)
-  const { data } = useCitationCount(doi)
+  const { data, isLoading } = useCitationCount(doi)
   if (!normalized) return null
+  // Settled without a count (not counted yet, or the request failed): show nothing.
+  if (!isLoading && !data) return null
 
   const s = SIZES[size]
   const hexagon = (
@@ -51,6 +53,7 @@ export function CitationBadge({ doi, size = "sm", className }: CitationBadgeProp
   const layout = "inline-flex items-center gap-1.5"
 
   if (!data) {
+    // Loading: same size as the badge, so nothing shifts when it arrives.
     return (
       <span className={cn(layout, "opacity-60", className)} aria-hidden="true">
         {hexagon}
@@ -59,7 +62,7 @@ export function CitationBadge({ doi, size = "sm", className }: CitationBadgeProp
     )
   }
 
-  const label = `${data.count} citations (source: ${SOURCE_LABEL[data.source]})`
+  const label = `${data.count} ${data.count === 1 ? "citation" : "citations"} (source: ${SOURCE_LABEL[data.source]})`
   // Not a link: neither Crossref nor OpenAlex has a public "cited by" page
   // addressable by DOI, and linking to the article itself would mislead.
   return (
