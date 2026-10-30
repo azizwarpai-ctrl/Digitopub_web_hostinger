@@ -23,6 +23,7 @@ Every endpoint:
 | Publication detection | `POST /api/notifications/cron/detect` | `*/30 * * * *` | New OJS issues/articles → `publication_events` + **draft** issue campaigns (never sends). First run only stores the watermark. 207 = more than 200 candidates, continues next run. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
 | Article digests | `POST /api/notifications/cron/digests` | `0 7 * * *` | Daily digest draft every day; weekly digest draft on Mondays (UTC). Contiguous windows. Same kill switch. |
 | OJS write queue | `POST /api/ojs/cron/push-sync` | `*/10 * * * *` | Retries writes to OJS that failed when saved (journal specialization, #234). Exponential backoff per job (1 min … 6 h, no cap for retryable errors; permanent failures stop). 207 = jobs attempted in this run are still retrying or failed (see admin journal page); 200 = no attempted failures/retries, although jobs waiting for future backoff may remain queued. Needs `OJS_API_KEY` + user bridge reachable. |
+| Citation counts (#232) | `POST /api/metrics/cron/citations` | `30 6 * * *` | Refreshes times-cited for every published DigitoPub DOI from Crossref `is-referenced-by-count` and OpenAlex `cited_by_count` (keeps the higher) into `article_citation_counts`. Least recently checked first; 207 = more DOIs next run. A failed lookup keeps the last count. Pages only read the table. Optional `CROSSREF_MAILTO` for the polite-pool contact. |
 | Notification send queue | `POST /api/notifications/cron/send` | `*/5 * * * *` | Sends queued publication-alert emails within `NOTIFY_MAX_PER_RUN`, `NOTIFY_MAX_PER_HOUR` and `NOTIFY_MAX_PER_DAY`. 207 = deliveries still queued, 200 = queue empty. No-op (200 `skipped`) unless `NOTIFICATIONS_ENABLED=true`. |
 
 ## OJS journal content drift
@@ -75,6 +76,9 @@ curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/
 
 # every 10 minutes (OJS write queue: retries journal specialization sync, #234)
 curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/ojs/cron/push-sync
+
+# daily 06:30 UTC (citation counts, #232)
+curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/metrics/cron/citations
 
 # every 5 minutes (send queue; throttled)
 curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://digitopub.com/api/notifications/cron/send

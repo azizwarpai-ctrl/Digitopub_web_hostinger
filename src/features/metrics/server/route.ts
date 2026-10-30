@@ -9,6 +9,7 @@ import {
     updateUserMetrics,
     retentionCleanup,
 } from "./jobs"
+import { MAX_BATCH, getCitationCounts, refreshCitationCounts } from "./citations-service"
 
 const AUTHOR_ROLE_ID = 65536 // PKP\security\Role::ROLE_ID_AUTHOR
 
@@ -55,6 +56,26 @@ app.post("/cron/retention", cronEndpoint("retention_cleanup", async () => {
     const result = await retentionCleanup({ deadlineMs: CRON_SOFT_DEADLINE_MS })
     return { partial: !result.completed, stats: { ...result } }
 }))
+
+// #232: daily refresh of times-cited counts (Crossref, OpenAlex fallback).
+// Resumes where it stopped: least recently checked DOIs go first.
+app.post("/cron/citations", cronEndpoint("citations_refresh", async () => {
+    const stats = await refreshCitationCounts({ deadline: Date.now() + CRON_SOFT_DEADLINE_MS })
+    return { partial: stats.remaining > 0, stats: { ...stats } }
+}))
+
+// ─── GET /metrics/citations — stored counts for DigitoPub DOIs (public, DB only) ──
+// ?doi=10.26629/x or ?dois=a,b,c (at most MAX_BATCH). Unknown or foreign DOIs
+// are simply absent from the result.
+app.get("/citations", async (c) => {
+    const raw = [c.req.query("doi"), ...(c.req.query("dois") ?? "").split(",")]
+        .map((d) => d?.trim())
+        .filter((d): d is string => !!d)
+    if (raw.length === 0) return c.json({ success: false, error: "Pass doi or dois" }, 400)
+    if (raw.length > MAX_BATCH) return c.json({ success: false, error: `At most ${MAX_BATCH} DOIs per request` }, 400)
+    const counts = await getCitationCounts(raw)
+    return c.json({ success: true, data: counts })
+})
 
 app.get("/", async (c) => {
     try {

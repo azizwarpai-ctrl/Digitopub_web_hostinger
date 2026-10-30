@@ -15,6 +15,7 @@ import DOMPurify from "dompurify"
 import type { CurrentIssueArticle, CurrentIssueAuthor } from "@/src/features/journals"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CitationBadge } from "@/components/citation-badge"
 import { AudioPlayer } from "@/src/components/audio-player"
 
 interface ArticleItemProps {
@@ -173,7 +174,7 @@ export function ArticleItem({ article }: ArticleItemProps) {
         )}
 
         {/* Action Footer */}
-        <div className="pt-4 mt-auto border-t border-border/40 flex items-center justify-between relative z-20">
+        <div className="pt-4 mt-auto border-t border-border/40 flex flex-wrap items-center justify-between gap-2 relative z-20">
           {article.datePublished ? (
             <span className="text-[11px] text-muted-foreground/80 font-bold uppercase tracking-wider">
               {new Date(article.datePublished).toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })}
@@ -182,7 +183,8 @@ export function ArticleItem({ article }: ArticleItemProps) {
             <span />
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <CitationBadge doi={article.doi} size="sm" />
             <Button asChild variant="outline" size="sm" className="h-8 gap-2 rounded-full px-4">
               <Link href={articleUrl}>
                 View Article

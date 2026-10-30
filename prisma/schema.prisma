@@ -971,3 +971,27 @@ model OjsSyncJob {
   @@index([action, target_type, target_id])
   @@map("ojs_sync_jobs")
 }
+
+// =====================================================================
+// Citation counts (#232)
+// =====================================================================
+
+/// Times-cited per DigitoPub DOI, refreshed daily by POST /api/metrics/cron/citations
+/// from Crossref (is-referenced-by-count) with OpenAlex (cited_by_count) as fallback.
+/// Pages only read this table; a failed lookup keeps the last known count.
+model ArticleCitationCount {
+  id         BigInt    @id @default(autoincrement())
+  doi        String    @unique @db.VarChar(255)
+  count      Int       @default(0)
+  /// "crossref" or "openalex": the source of `count`.
+  source     String    @db.VarChar(16)
+  /// When `count` was last obtained from a source.
+  fetched_at DateTime?
+  /// When the refresh last tried this DOI (success or failure).
+  checked_at DateTime  @default(now())
+  /// Last lookup error, cleared on success.
+  error      String?   @db.VarChar(255)
+
+  @@index([checked_at])
+  @@map("article_citation_counts")
+}
