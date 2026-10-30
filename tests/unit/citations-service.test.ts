@@ -99,6 +99,16 @@ describe("lookupCitationCount", () => {
         expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: () => json({}, 503), openalex: oa(3) }))).toEqual({ count: 3, source: "openalex", partial: true })
         expect(await lookupCitationCount("10.26629/x", fakeFetch({ crossref: cr(2), openalex: () => json({}, 404) }))).toEqual({ count: 2, source: "crossref", partial: false })
     })
+    // First production run: new DOIs are unknown to both sources; they have 0 citations, not "no data".
+    it("both not found -> 0 citations (a new DOI), not an error", async () => {
+        expect(await lookupCitationCount("10.26629/x", fakeFetch({}))).toEqual({ count: 0, source: "crossref", partial: false })
+    })
+    it("retries once after HTTP 429 and uses the second answer", async () => {
+        let calls = 0
+        const f = fakeFetch({ crossref: () => (++calls === 1 ? json({}, 429) : json({ message: { "is-referenced-by-count": 3 } })), openalex: oa(1) })
+        expect(await lookupCitationCount("10.26629/x", f)).toEqual({ count: 3, source: "crossref", partial: false })
+        expect(calls).toBe(2)
+    })
     it("both fail -> throws with both reasons", async () => {
         const f = fakeFetch({ crossref: () => json({}, 503), openalex: () => json({}, 404) })
         await expect(lookupCitationCount("10.26629/x", f)).rejects.toThrow("crossref: HTTP 503; openalex: not found")
