@@ -23,13 +23,14 @@ on:
     - cron: "0 4 * * *"     # user (ORCID) metrics
     - cron: "0 5 * * 0"     # event retention cleanup
     - cron: "0 7 * * *"     # article digests
+    - cron: "30 6 * * *"    # citation counts (#232)
   workflow_dispatch:
     inputs:
       job:
         description: Job to run now
         required: true
         type: choice
-        options: [send, push-sync, ojs-sync, detect, metrics-daily, metrics-monthly, metrics-user, retention, digests]
+        options: [send, push-sync, ojs-sync, detect, metrics-daily, metrics-monthly, metrics-user, retention, digests, citations]
 
 permissions:
   contents: read
@@ -63,6 +64,7 @@ jobs:
               "0 4 * * *")    JOB=metrics-user ;;
               "0 5 * * 0")    JOB=retention ;;
               "0 7 * * *")    JOB=digests ;;
+              "30 6 * * *")   JOB=citations ;;
               *) echo "::error::Unknown schedule '${SCHEDULE}'"; exit 1 ;;
             esac
           fi
@@ -76,6 +78,7 @@ jobs:
             metrics-user)    METHOD=POST; PATH_=/api/metrics/cron/user ;;
             retention)       METHOD=POST; PATH_=/api/metrics/cron/retention ;;
             digests)         METHOD=POST; PATH_=/api/notifications/cron/digests ;;
+            citations)       METHOD=POST; PATH_=/api/metrics/cron/citations ;;
             *) echo "::error::Unknown job '${JOB}'"; exit 1 ;;
           esac
           status=$(curl -sS -o body.json -w '%{http_code}' -X "${METHOD}" -m 290 \

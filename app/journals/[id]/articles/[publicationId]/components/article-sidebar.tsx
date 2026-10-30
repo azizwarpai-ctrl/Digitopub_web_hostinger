@@ -5,6 +5,7 @@ import { useState } from "react"
 import type { ArticleDetail } from "@/src/features/journals"
 import { CitationBox } from "./citation-box"
 import { Button } from "@/components/ui/button"
+import { CitationBadge } from "@/components/citation-badge"
 
 interface ArticleSidebarProps {
   article: ArticleDetail
@@ -97,7 +98,7 @@ export function ArticleSidebar({ article }: ArticleSidebarProps) {
         <div className="grid grid-cols-2 gap-3">
           <MetricCard
             icon={<Quote className="h-4 w-4 text-muted-foreground" />}
-            label="Quotes"
+            label="References"
             value={article.citations || 0}
           />
           <MetricCard
@@ -107,6 +108,17 @@ export function ArticleSidebar({ article }: ArticleSidebarProps) {
           />
         </div>
       </div>
+
+      {/* Times cited */}
+      {article.doi && (
+        <div className="rounded-xl border border-border/60 bg-card p-5 space-y-3 shadow-sm">
+          <h3 className="font-semibold text-base">Citations</h3>
+          <CitationBadge doi={article.doi} size="md" />
+          <p className="text-xs text-muted-foreground">
+            Times cited, from Crossref and OpenAlex. Updated daily.
+          </p>
+        </div>
+      )}
 
       {/* Citation Box */}
       <CitationBox article={article} />
