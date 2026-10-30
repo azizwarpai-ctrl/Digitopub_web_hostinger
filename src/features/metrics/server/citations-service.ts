@@ -15,7 +15,9 @@ import { ojsQuery } from "@/src/features/ojs/server/ojs-client"
 const DOI_RE = /^10\.26629\/[^\s?#]{1,200}$/i
 export const MAX_BATCH = 50
 const FETCH_TIMEOUT_MS = 10_000
-const CONCURRENCY = 4
+// Crossref and OpenAlex rate-limit bursts (the first production run hit HTTP 429 at 4).
+const CONCURRENCY = 2
+const RETRY_429_MS = 2_000
 
 export type CitationSource = "crossref" | "openalex"
 
@@ -38,7 +40,7 @@ function contactMailto(): string | undefined {
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
-async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
+async function getJson(fetchImpl: FetchLike, url: string, retried = false): Promise<unknown> {
   const mailto = contactMailto()
   const res = await fetchImpl(url, {
     headers: {
@@ -49,6 +51,13 @@ async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
   if (res.status === 404) return null
+  if (res.status === 429 && !retried) {
+    // One polite retry, honouring Retry-After (seconds) up to 10 s.
+    const after = Number(res.headers.get("retry-after"))
+    const waitMs = Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 10_000) : RETRY_429_MS
+    await new Promise((r) => setTimeout(r, process.env.NODE_ENV === "test" ? 0 : waitMs))
+    return getJson(fetchImpl, url, true)
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
@@ -85,6 +94,10 @@ export async function lookupCitationCount(
   ])
   const c = crossref.status === "fulfilled" ? crossref.value : null
   const o = openalex.status === "fulfilled" ? openalex.value : null
+  // Unknown to both (a new DOI not indexed yet): 0 citations, not an error.
+  if (c === null && o === null && crossref.status === "fulfilled" && openalex.status === "fulfilled") {
+    return { count: 0, source: "crossref", partial: false }
+  }
   if (c === null && o === null) {
     const reasons = [crossref, openalex].map((r) => (r.status === "rejected" ? String(r.reason?.message ?? r.reason) : "not found"))
     throw new Error(`crossref: ${reasons[0]}; openalex: ${reasons[1]}`)
